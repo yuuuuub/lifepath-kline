@@ -103,7 +103,7 @@ const AnalysisResult: React.FC<AnalysisResultProps> = ({ analysis }) => {
   return (
     <div className="w-full space-y-8 animate-fade-in-up">
       {/* Bazi Pillars */}
-      <div className="flex justify-center gap-2 sm:gap-3 md:gap-8 bg-gradient-to-r from-indigo-900 via-indigo-800 to-purple-900 text-amber-50 p-6 sm:p-8 rounded-2xl shadow-xl overflow-x-auto">
+      <div className="flex justify-center gap-2 sm:gap-3 md:gap-8 bg-indigo-900 text-amber-50 p-6 sm:p-8 rounded-2xl shadow-xl overflow-x-auto">
         {(Array.isArray(analysis.bazi) ? analysis.bazi : []).map((pillar, index) => {
           const labels = ['年柱', '月柱', '日柱', '时柱'];
           const colors = ['text-amber-300', 'text-amber-200', 'text-amber-100', 'text-amber-200'];

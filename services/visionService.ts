@@ -65,6 +65,8 @@ export const extractBaziFromImage = async (
 
   const response = await fetch(`${baseUrl}/chat/completions`, {
     method: "POST",
+    mode: "cors",
+    credentials: "omit",
     headers: {
       "Content-Type": "application/json",
       Authorization: `Bearer ${apiKey}`,

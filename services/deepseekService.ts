@@ -155,6 +155,8 @@ export const callDeepSeek = async (
   try {
     const response = await fetch(`${DEFAULT_BASE_URL}/chat/completions`, {
       method: "POST",
+      mode: "cors",
+      credentials: "omit",
       headers: {
         "Content-Type": "application/json",
         Authorization: `Bearer ${apiKey}`,
@@ -193,6 +195,12 @@ export const callDeepSeek = async (
   } catch (e: any) {
     if (e.name === "AbortError") {
       throw new Error("请求超时，请稍后重试");
+    }
+    if (!navigator.onLine) {
+      throw new Error("网络已断开，请检查网络连接后重试");
+    }
+    if (e.message === "Failed to fetch" || e.name === "TypeError") {
+      throw new Error("网络请求失败，请检查网络连接或稍后重试。部分浏览器可能需要关闭广告拦截或隐私模式。");
     }
     throw e;
   } finally {
@@ -247,6 +255,8 @@ export const generateByBaziImage = async (
 
     const response = await fetch(`${DEFAULT_BASE_URL}/chat/completions`, {
       method: "POST",
+      mode: "cors",
+      credentials: "omit",
       headers: {
         "Content-Type": "application/json",
         Authorization: `Bearer ${apiKey}`,
@@ -292,6 +302,12 @@ export const generateByBaziImage = async (
     if (e.name === "AbortError") {
       throw new Error("生成超时（10分钟），请稍后重试");
     }
+    if (!navigator.onLine) {
+      throw new Error("网络已断开，请检查网络连接后重试");
+    }
+    if (e.message === "Failed to fetch" || e.name === "TypeError") {
+      throw new Error("网络请求失败，请检查网络连接或稍后重试。部分浏览器可能需要关闭广告拦截或隐私模式。");
+    }
     throw e;
   } finally {
     clearInterval(timer);
@@ -311,6 +327,8 @@ export const generateByBaziImageDirect = async (input: BaziImageInput): Promise<
   try {
     const response = await fetch(`${DEFAULT_BASE_URL}/chat/completions`, {
       method: "POST",
+      mode: "cors",
+      credentials: "omit",
       headers: {
         "Content-Type": "application/json",
         Authorization: `Bearer ${apiKey}`,
@@ -352,6 +370,12 @@ export const generateByBaziImageDirect = async (input: BaziImageInput): Promise<
   } catch (e: any) {
     if (e.name === "AbortError") {
       throw new Error("请求超时，请稍后重试");
+    }
+    if (!navigator.onLine) {
+      throw new Error("网络已断开，请检查网络连接后重试");
+    }
+    if (e.message === "Failed to fetch" || e.name === "TypeError") {
+      throw new Error("网络请求失败，请检查网络连接或稍后重试。部分浏览器可能需要关闭广告拦截或隐私模式。");
     }
     throw e;
   } finally {
