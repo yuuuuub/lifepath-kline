@@ -44,7 +44,7 @@ const GenerationProgress: React.FC<GenerationProgressProps> = ({ stage, progress
 
   return (
     <div className="fixed inset-0 z-[100] flex items-center justify-center bg-black/60 backdrop-blur-sm">
-      <div className="w-full max-w-lg mx-4 bg-white rounded-2xl shadow-2xl p-8 md:p-10">
+      <div className="w-full max-w-lg mx-3 sm:mx-4 bg-white rounded-2xl shadow-2xl p-6 sm:p-8 md:p-10">
         <div className="flex items-center gap-3 mb-6">
           <div className="bg-indigo-600 text-white p-2.5 rounded-xl">
             <Sparkles className="w-5 h-5" />

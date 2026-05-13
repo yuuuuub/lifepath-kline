@@ -85,11 +85,10 @@ export async function saveToCache(name: string, gender: string, rawText: string,
     return new Promise((resolve, reject) => {
       const tx = db.transaction(STORE_NAME, "readwrite");
       const store = tx.objectStore(STORE_NAME);
-      const request = store.put(result, key);
-      request.onsuccess = () => {};
-      request.onerror = () => {};
+      store.put(result, key);
       tx.oncomplete = () => { db.close(); resolve(); };
       tx.onerror = () => { db.close(); reject(tx.error); };
+      tx.onabort = () => { db.close(); reject(tx.error); };
     });
   } catch {
     // 存缓存失败不阻断主流程

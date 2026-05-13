@@ -68,7 +68,7 @@ const Card = ({ title, icon: Icon, content, score, color, extraBadges }: any) =>
   }
 
   return (
-    <div className={`bg-white p-6 rounded-2xl shadow-sm border border-gray-100 hover:shadow-lg hover:-translate-y-0.5 transition-all duration-300 flex flex-col h-full relative overflow-hidden`}>
+    <div className={`bg-white p-4 sm:p-6 rounded-2xl shadow-sm border border-gray-100 hover:shadow-lg hover:-translate-y-0.5 transition-all duration-300 flex flex-col h-full relative overflow-hidden`}>
       <div className={`flex items-center justify-between mb-3 ${color}`}>
         <div className="flex items-center gap-2.5">
           <div className={`p-1.5 rounded-lg bg-opacity-10 ${color.replace('text-', 'bg-')}`}>
@@ -86,7 +86,7 @@ const Card = ({ title, icon: Icon, content, score, color, extraBadges }: any) =>
         </div>
       )}
 
-      <div className="text-gray-600 text-sm leading-relaxed whitespace-pre-wrap flex-grow">
+      <div className="text-gray-600 text-xs sm:text-sm leading-relaxed whitespace-pre-wrap flex-grow">
         {displayContent}
       </div>
       {typeof score === 'number' && (
@@ -103,23 +103,23 @@ const AnalysisResult: React.FC<AnalysisResultProps> = ({ analysis }) => {
   return (
     <div className="w-full space-y-8 animate-fade-in-up">
       {/* Bazi Pillars */}
-      <div className="flex justify-center gap-3 md:gap-8 bg-gradient-to-r from-indigo-900 via-indigo-800 to-purple-900 text-amber-50 p-8 rounded-2xl shadow-xl overflow-x-auto">
+      <div className="flex justify-center gap-2 sm:gap-3 md:gap-8 bg-gradient-to-r from-indigo-900 via-indigo-800 to-purple-900 text-amber-50 p-6 sm:p-8 rounded-2xl shadow-xl overflow-x-auto">
         {(Array.isArray(analysis.bazi) ? analysis.bazi : []).map((pillar, index) => {
           const labels = ['年柱', '月柱', '日柱', '时柱'];
           const colors = ['text-amber-300', 'text-amber-200', 'text-amber-100', 'text-amber-200'];
           return (
             <div key={index} className="text-center min-w-[70px]">
               <div className="text-[10px] uppercase tracking-widest text-indigo-300 mb-2 font-medium">{labels[index]}</div>
-              <div className={`text-2xl md:text-3xl font-serif-sc font-bold tracking-[0.2em] ${colors[index]}`}>{pillar}</div>
+              <div className={`text-xl sm:text-2xl md:text-3xl font-serif-sc font-bold tracking-[0.2em] ${colors[index]}`}>{pillar}</div>
             </div>
           );
         })}
       </div>
 
       {/* Summary with Score */}
-      <div className="bg-gradient-to-br from-indigo-50/50 to-white p-8 rounded-2xl border border-indigo-100">
-        <div className="flex flex-col md:flex-row md:items-center justify-between gap-4 mb-4">
-          <h3 className="flex items-center gap-2.5 font-serif-sc font-bold text-xl text-indigo-900">
+      <div className="bg-gradient-to-br from-indigo-50/50 to-white p-4 sm:p-8 rounded-2xl border border-indigo-100">
+        <div className="flex flex-col md:flex-row md:items-center justify-between gap-3 sm:gap-4 mb-3 sm:mb-4">
+          <h3 className="flex items-center gap-2 sm:gap-2.5 font-serif-sc font-bold text-lg sm:text-xl text-indigo-900">
             <div className="p-1.5 bg-indigo-100 rounded-lg">
               <ScrollText className="w-4 h-4 text-indigo-600" />
             </div>
@@ -133,7 +133,7 @@ const AnalysisResult: React.FC<AnalysisResultProps> = ({ analysis }) => {
       </div>
 
       {/* Grid for categorical analysis with Scores */}
-      <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6">
+      <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-4 sm:gap-6">
 
         {/* 投资理财建议 */}
         <Card
@@ -214,7 +214,7 @@ const AnalysisResult: React.FC<AnalysisResultProps> = ({ analysis }) => {
           color="text-gray-500"
           content={
             <div className="space-y-4">
-              <ul className="space-y-1.5 font-mono text-xs md:text-sm">
+              <ul className="space-y-1 sm:space-y-1.5 font-mono text-[11px] sm:text-xs md:text-sm">
                 <li className="flex justify-between items-center border-b border-gray-100 pb-1">
                   <span>0-2分</span>
                   <span className="text-xs px-2 py-0.5 bg-red-100 text-red-600 rounded font-bold">极差</span>

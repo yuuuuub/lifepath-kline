@@ -214,7 +214,7 @@ const App: React.FC = () => {
         </div>
       </header>
 
-      <main className="w-full max-w-7xl mx-auto px-4 py-8 md:py-12 flex flex-col gap-12">
+      <main className="w-full max-w-7xl mx-auto px-3 sm:px-4 py-6 md:py-12 flex flex-col gap-8 md:gap-12">
 
         {!result && (
           <div className="flex flex-col items-center justify-center min-h-[60vh] gap-10 animate-fade-in">
@@ -223,18 +223,18 @@ const App: React.FC = () => {
                 <Sparkles className="w-3.5 h-3.5" />
                 传统命理 × 现代可视化
               </div>
-              <h2 className="text-4xl md:text-6xl font-serif-sc font-bold text-gray-900 mb-6 leading-tight">
+              <h2 className="text-3xl sm:text-4xl md:text-6xl font-serif-sc font-bold text-gray-900 mb-4 sm:mb-6 leading-tight">
                 洞悉命运起伏 <br />
                 <span className="bg-gradient-to-r from-indigo-600 to-purple-600 bg-clip-text text-transparent">
                   预见人生轨迹
                 </span>
               </h2>
-              <p className="text-gray-500 text-lg leading-relaxed mb-8 max-w-xl mx-auto">
+              <p className="text-gray-500 text-base sm:text-lg leading-relaxed mb-6 sm:mb-8 max-w-xl mx-auto">
                 结合<strong className="text-gray-700">传统八字命理</strong>与<strong className="text-gray-700">金融可视化技术</strong>，
                 将您的一生运势绘制成直观的K线图。
               </p>
 
-              <div className="bg-white/80 backdrop-blur p-6 rounded-2xl border border-gray-100 shadow-sm mb-8 text-left w-full max-w-lg">
+              <div className="bg-white/80 backdrop-blur p-4 sm:p-6 rounded-2xl border border-gray-100 shadow-sm mb-6 sm:mb-8 text-left w-full max-w-lg">
                 <h3 className="font-bold text-gray-800 mb-4 flex items-center gap-2">
                   <span className="w-1 h-5 bg-indigo-600 rounded-full"></span>
                   使用方法
@@ -266,11 +266,11 @@ const App: React.FC = () => {
         )}
 
         {result && (
-          <div className="animate-fade-in space-y-10">
+          <div className="animate-fade-in space-y-6 md:space-y-10">
 
-            <div className="flex flex-col md:flex-row justify-between items-end md:items-center pb-6 border-b border-gray-100 gap-4">
+            <div className="flex flex-col md:flex-row justify-between items-start md:items-center pb-4 sm:pb-6 border-b border-gray-100 gap-3 sm:gap-4">
               <div>
-                <h2 className="text-2xl font-bold font-serif-sc text-gray-900">
+                <h2 className="text-xl sm:text-2xl font-bold font-serif-sc text-gray-900">
                   {userName ? `${userName}的` : ''}命盘分析报告
                 </h2>
               </div>
@@ -306,10 +306,10 @@ const App: React.FC = () => {
               </div>
             </div>
 
-            <section className="bg-white rounded-2xl border border-gray-100 shadow-sm p-6 space-y-4 break-inside-avoid">
+            <section className="bg-white rounded-2xl border border-gray-100 shadow-sm p-3 sm:p-6 space-y-3 sm:space-y-4 break-inside-avoid">
               <div className="flex flex-col gap-1">
-                <h3 className="text-lg font-bold text-gray-800 flex items-center gap-2 font-serif-sc">
-                  <span className="w-1 h-5 bg-indigo-600 rounded-full"></span>
+                <h3 className="text-base sm:text-lg font-bold text-gray-800 flex items-center gap-2 font-serif-sc">
+                  <span className="w-1 h-4 sm:h-5 bg-indigo-600 rounded-full"></span>
                   流年运势走势图
                 </h3>
                 {peakYearItem && (
@@ -330,10 +330,10 @@ const App: React.FC = () => {
                 </div>
             </section>
 
-            <section className="bg-white rounded-2xl border border-gray-100 shadow-sm p-6 space-y-4 break-inside-avoid">
+            <section className="bg-white rounded-2xl border border-gray-100 shadow-sm p-3 sm:p-6 space-y-3 sm:space-y-4 break-inside-avoid">
               <div className="flex flex-col gap-1">
-                <h3 className="text-lg font-bold text-gray-800 flex items-center gap-2 font-serif-sc">
-                  <span className="w-1 h-5 bg-purple-600 rounded-full"></span>
+                <h3 className="text-base sm:text-lg font-bold text-gray-800 flex items-center gap-2 font-serif-sc">
+                  <span className="w-1 h-4 sm:h-5 bg-purple-600 rounded-full"></span>
                   大运概览K线图
                 </h3>
               </div>

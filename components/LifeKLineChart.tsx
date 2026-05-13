@@ -1,4 +1,4 @@
-import React from 'react';
+import React, { useState, useEffect } from 'react';
 import {
   ComposedChart,
   Bar,
@@ -24,41 +24,41 @@ const CustomTooltip = ({ active, payload }: any) => {
     const isUp = dataPoint.close >= dataPoint.open;
 
     return (
-      <div className="bg-white/95 backdrop-blur-sm p-5 rounded-xl shadow-2xl border border-gray-200 z-50 w-[320px] md:w-[400px]">
-        <div className="flex justify-between items-start mb-3 border-b border-gray-100 pb-2">
+      <div className="bg-white/95 backdrop-blur-sm p-3 sm:p-5 rounded-xl shadow-2xl border border-gray-200 z-50 w-[280px] sm:w-[320px] md:w-[400px]">
+        <div className="flex justify-between items-start mb-2 sm:mb-3 border-b border-gray-100 pb-2">
           <div>
-            <p className="text-xl font-bold text-gray-800 font-serif-sc">
-              {dataPoint.ganZhi} <span className="text-base text-gray-500 font-sans">({dataPoint.age}岁)</span>
+            <p className="text-lg sm:text-xl font-bold text-gray-800 font-serif-sc">
+              {dataPoint.ganZhi} <span className="text-sm sm:text-base text-gray-500 font-sans">({dataPoint.age}岁)</span>
             </p>
-            <p className="text-sm text-indigo-600 font-medium mt-1">
+            <p className="text-xs sm:text-sm text-indigo-600 font-medium mt-1">
               {dataPoint.daYun || ''}
             </p>
           </div>
-          <div className={`text-base font-bold px-2 py-1 rounded ${isUp ? 'bg-green-100 text-green-700' : 'bg-red-100 text-red-700'}`}>
+          <div className={`text-sm sm:text-base font-bold px-2 py-1 rounded ${isUp ? 'bg-green-100 text-green-700' : 'bg-red-100 text-red-700'}`}>
             {isUp ? '吉 ▲' : '凶 ▼'}
           </div>
         </div>
 
-        <div className="grid grid-cols-4 gap-2 text-xs text-gray-500 mb-4 bg-gray-50 p-2 rounded">
+        <div className="grid grid-cols-4 gap-1 sm:gap-2 text-[10px] sm:text-xs text-gray-500 mb-3 sm:mb-4 bg-gray-50 p-2 rounded">
           <div className="text-center">
-            <span className="block scale-90">开盘</span>
-            <span className="font-mono text-gray-700 font-bold">{dataPoint.open}</span>
+            <span className="block">开盘</span>
+            <span className="font-mono text-gray-700 font-bold text-xs sm:text-sm">{dataPoint.open}</span>
           </div>
           <div className="text-center">
-            <span className="block scale-90">收盘</span>
-            <span className="font-mono text-gray-700 font-bold">{dataPoint.close}</span>
+            <span className="block">收盘</span>
+            <span className="font-mono text-gray-700 font-bold text-xs sm:text-sm">{dataPoint.close}</span>
           </div>
           <div className="text-center">
-            <span className="block scale-90">最高</span>
-            <span className="font-mono text-gray-700 font-bold">{dataPoint.high}</span>
+            <span className="block">最高</span>
+            <span className="font-mono text-gray-700 font-bold text-xs sm:text-sm">{dataPoint.high}</span>
           </div>
           <div className="text-center">
-            <span className="block scale-90">最低</span>
-            <span className="font-mono text-gray-700 font-bold">{dataPoint.low}</span>
+            <span className="block">最低</span>
+            <span className="font-mono text-gray-700 font-bold text-xs sm:text-sm">{dataPoint.low}</span>
           </div>
         </div>
 
-        <div className="text-sm text-gray-700 leading-relaxed text-justify max-h-[200px] overflow-y-auto custom-scrollbar">
+        <div className="text-xs sm:text-sm text-gray-700 leading-relaxed text-justify max-h-[100px] sm:max-h-[200px] overflow-y-auto custom-scrollbar">
           {dataPoint.reason}
         </div>
       </div>
@@ -137,7 +137,7 @@ const PeakLabel = (props: any) => {
   );
 };
 
-const YearlyKLineChart: React.FC<{ data: KLinePoint[] }> = ({ data }) => {
+const YearlyKLineChart: React.FC<{ data: KLinePoint[]; isMobile: boolean }> = ({ data, isMobile }) => {
   const transformedData = data.map((d, i) => ({
     ...d,
     bodyRange: [Math.min(d.open, d.close), Math.max(d.open, d.close)],
@@ -148,15 +148,15 @@ const YearlyKLineChart: React.FC<{ data: KLinePoint[] }> = ({ data }) => {
   const maxHigh = data.length > 0 ? Math.max(...data.map(d => d.high)) : 100;
 
   return (
-    <div className="w-full h-[500px] bg-white p-2 md:p-6 rounded-xl border border-gray-200 shadow-sm relative">
-      <div className="mb-4 flex justify-between items-center px-2">
-        <h3 className="text-xl font-bold text-gray-800 font-serif-sc">流年K线图</h3>
-        <div className="flex gap-4 text-xs font-medium">
-          <span className="flex items-center text-green-700 bg-green-50 px-2 py-1 rounded">
-            <div className="w-2 h-2 bg-green-500 mr-2 rounded-full"></div> 吉运 (涨)
+    <div className="w-full h-[380px] sm:h-[450px] md:h-[500px] bg-white p-2 sm:p-4 md:p-6 rounded-xl border border-gray-200 shadow-sm relative overflow-x-auto">
+      <div className="mb-2 sm:mb-4 flex flex-col sm:flex-row justify-between items-start sm:items-center gap-2 px-2">
+        <h3 className="text-lg sm:text-xl font-bold text-gray-800 font-serif-sc">流年K线图</h3>
+        <div className="flex gap-2 sm:gap-4 text-[10px] sm:text-xs font-medium">
+          <span className="flex items-center text-green-700 bg-green-50 px-1.5 sm:px-2 py-1 rounded">
+            <div className="w-2 h-2 bg-green-500 mr-1 sm:mr-2 rounded-full"></div> 吉运
           </span>
-          <span className="flex items-center text-red-700 bg-red-50 px-2 py-1 rounded">
-            <div className="w-2 h-2 bg-red-500 mr-2 rounded-full"></div> 凶运 (跌)
+          <span className="flex items-center text-red-700 bg-red-50 px-1.5 sm:px-2 py-1 rounded">
+            <div className="w-2 h-2 bg-red-500 mr-1 sm:mr-2 rounded-full"></div> 凶运
           </span>
         </div>
       </div>
@@ -174,8 +174,8 @@ const YearlyKLineChart: React.FC<{ data: KLinePoint[] }> = ({ data }) => {
 
           <XAxis
             dataKey="age"
-            tick={{ fontSize: 11, fill: '#6b7280' }}
-            interval={9}
+            tick={{ fontSize: isMobile ? 10 : 11, fill: '#6b7280' }}
+            interval={isMobile ? 19 : 9}
             axisLine={{ stroke: '#e5e7eb' }}
             tickLine={false}
             label={{ value: '年龄（岁）', position: 'insideBottomRight', offset: -5, fontSize: 10, fill: '#9ca3af' }}
@@ -216,7 +216,7 @@ const YearlyKLineChart: React.FC<{ data: KLinePoint[] }> = ({ data }) => {
             shape={<CandleShape />}
             isAnimationActive={true}
             animationDuration={800}
-            maxBarSize={12}
+            maxBarSize={isMobile ? 8 : 12}
           >
             <LabelList
               dataKey="high"
@@ -230,7 +230,7 @@ const YearlyKLineChart: React.FC<{ data: KLinePoint[] }> = ({ data }) => {
   );
 };
 
-const DaYunKLineChart: React.FC<{ data: KLinePoint[] }> = ({ data }) => {
+const DaYunKLineChart: React.FC<{ data: KLinePoint[]; isMobile: boolean }> = ({ data, isMobile }) => {
   const transformedData = data.map((d, i) => ({
     ...d,
     bodyRange: [Math.min(d.open, d.close), Math.max(d.open, d.close)],
@@ -242,15 +242,15 @@ const DaYunKLineChart: React.FC<{ data: KLinePoint[] }> = ({ data }) => {
   const maxHigh = data.length > 0 ? Math.max(...data.map(d => d.high)) : 100;
 
   return (
-    <div className="w-full h-[550px] bg-white p-2 md:p-6 rounded-xl border border-gray-200 shadow-sm relative">
-      <div className="mb-6 flex justify-between items-center px-2">
-        <h3 className="text-xl font-bold text-gray-800 font-serif-sc">大运K线图</h3>
-        <div className="flex gap-4 text-xs font-medium">
-          <span className="flex items-center text-green-700 bg-green-50 px-2 py-1 rounded">
-            <div className="w-2 h-2 bg-green-500 mr-2 rounded-full"></div> 吉运 (涨)
+    <div className="w-full h-[340px] sm:h-[450px] md:h-[550px] bg-white p-2 sm:p-4 md:p-6 rounded-xl border border-gray-200 shadow-sm relative overflow-x-auto">
+      <div className="mb-4 sm:mb-6 flex flex-col sm:flex-row justify-between items-start sm:items-center gap-2 px-2">
+        <h3 className="text-lg sm:text-xl font-bold text-gray-800 font-serif-sc">大运K线图</h3>
+        <div className="flex gap-2 sm:gap-4 text-[10px] sm:text-xs font-medium">
+          <span className="flex items-center text-green-700 bg-green-50 px-1.5 sm:px-2 py-1 rounded">
+            <div className="w-2 h-2 bg-green-500 mr-1 sm:mr-2 rounded-full"></div> 吉运
           </span>
-          <span className="flex items-center text-red-700 bg-red-50 px-2 py-1 rounded">
-            <div className="w-2 h-2 bg-red-500 mr-2 rounded-full"></div> 凶运 (跌)
+          <span className="flex items-center text-red-700 bg-red-50 px-1.5 sm:px-2 py-1 rounded">
+            <div className="w-2 h-2 bg-red-500 mr-1 sm:mr-2 rounded-full"></div> 凶运
           </span>
         </div>
       </div>
@@ -261,7 +261,7 @@ const DaYunKLineChart: React.FC<{ data: KLinePoint[] }> = ({ data }) => {
 
           <XAxis
             dataKey="ganZhi"
-            tick={{ fontSize: 12, fill: '#374151', fontWeight: 600, fontFamily: 'serif' }}
+            tick={{ fontSize: isMobile ? 10 : 12, fill: '#374151', fontWeight: 600, fontFamily: 'serif' }}
             interval={0}
             axisLine={{ stroke: '#e5e7eb' }}
             tickLine={false}
@@ -283,7 +283,7 @@ const DaYunKLineChart: React.FC<{ data: KLinePoint[] }> = ({ data }) => {
             shape={<CandleShape />}
             isAnimationActive={true}
             animationDuration={1500}
-            maxBarSize={60}
+            maxBarSize={isMobile ? 32 : 60}
           >
             <LabelList
               dataKey="high"
@@ -327,17 +327,25 @@ export function groupByDaYun(chartData: KLinePoint[], daYunReasons?: Record<stri
 }
 
 const LifeKLineChart: React.FC<LifeKLineChartProps> = ({ data, mode }) => {
+  const [isMobile, setIsMobile] = useState(window.innerWidth < 640);
+
+  useEffect(() => {
+    const onResize = () => setIsMobile(window.innerWidth < 640);
+    window.addEventListener('resize', onResize);
+    return () => window.removeEventListener('resize', onResize);
+  }, []);
+
   if (!data || data.length === 0) {
-    return <div className="h-[500px] flex items-center justify-center text-gray-400">无数据</div>;
+    return <div className="h-[300px] sm:h-[400px] flex items-center justify-center text-gray-400">无数据</div>;
   }
 
   const resolvedMode = mode || (data.length > 20 ? 'yearly' : 'dayun');
 
   if (resolvedMode === 'yearly') {
-    return <YearlyKLineChart data={data} />;
+    return <YearlyKLineChart data={data} isMobile={isMobile} />;
   }
 
-  return <DaYunKLineChart data={data} />;
+  return <DaYunKLineChart data={data} isMobile={isMobile} />;
 };
 
 export default LifeKLineChart;
