@@ -103,14 +103,23 @@ const AnalysisResult: React.FC<AnalysisResultProps> = ({ analysis }) => {
   return (
     <div className="w-full space-y-8 animate-fade-in-up">
       {/* Bazi Pillars */}
-      <div className="flex justify-center gap-2 sm:gap-3 md:gap-8 bg-indigo-900 text-amber-50 p-6 sm:p-8 rounded-2xl shadow-xl overflow-x-auto">
+      <div
+        className="flex justify-center gap-2 sm:gap-3 md:gap-8 p-6 sm:p-8 rounded-2xl shadow-xl overflow-x-auto"
+        style={{ backgroundColor: '#1e1b4b' }}
+      >
         {(Array.isArray(analysis.bazi) ? analysis.bazi : []).map((pillar, index) => {
           const labels = ['年柱', '月柱', '日柱', '时柱'];
-          const colors = ['text-amber-300', 'text-amber-200', 'text-amber-100', 'text-amber-200'];
+          const pillarColors = ['#fbbf24', '#fde68a', '#fef3c7', '#fde68a'];
           return (
             <div key={index} className="text-center min-w-[70px]">
-              <div className="text-[10px] uppercase tracking-widest text-indigo-300 mb-2 font-medium">{labels[index]}</div>
-              <div className={`text-xl sm:text-2xl md:text-3xl font-serif-sc font-bold tracking-[0.2em] ${colors[index]}`}>{pillar}</div>
+              <div
+                className="text-[10px] uppercase tracking-widest mb-2 font-medium"
+                style={{ color: '#c7d2fe' }}
+              >{labels[index]}</div>
+              <div
+                className="text-xl sm:text-2xl md:text-3xl font-bold tracking-[0.2em]"
+                style={{ color: pillarColors[index], fontFamily: '"Noto Serif SC", "STSong", "SimSun", "PingFang SC", serif' }}
+              >{pillar}</div>
             </div>
           );
         })}
