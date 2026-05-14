@@ -1,5 +1,5 @@
 export async function onRequest(context) {
-  const { request, params } = context;
+  const { request, params, env } = context;
   const url = new URL(request.url);
 
   const segments = params.path || [];
@@ -28,13 +28,31 @@ export async function onRequest(context) {
 
   const targetUrl = `${baseUrl}/${endpoint}${url.search}`;
 
-  const proxyHeaders = new Headers();
-  for (const [key, value] of request.headers) {
-    const lower = key.toLowerCase();
-    if (lower === 'host' || lower === 'origin' || lower === 'referer') continue;
-    if (lower.startsWith('cf-') || lower === 'x-forwarded-for' || lower === 'x-real-ip') continue;
-    proxyHeaders.set(key, value);
+  // 优先使用 Cloudflare Pages 环境变量（最可靠），其次使用前端传递的 Authorization 头
+  const envKeyName = service === 'deepseek' ? 'DEEPSEEK_API_KEY' : 'VISION_API_KEY';
+  let apiKey = env[envKeyName] || '';
+
+  if (!apiKey) {
+    const authHeader = request.headers.get('Authorization') || request.headers.get('authorization') || '';
+    apiKey = authHeader.replace(/^Bearer\s+/i, '').trim();
   }
+
+  if (!apiKey) {
+    return new Response(
+      JSON.stringify({
+        error: `缺少 ${service} API Key。请在 Cloudflare Pages 环境变量中设置 ${envKeyName}。`,
+      }),
+      {
+        status: 401,
+        headers: { 'Content-Type': 'application/json' },
+      }
+    );
+  }
+
+  // 构建代理请求头
+  const proxyHeaders = new Headers();
+  proxyHeaders.set('Content-Type', 'application/json');
+  proxyHeaders.set('Authorization', `Bearer ${apiKey}`);
 
   try {
     const res = await fetch(targetUrl, {
