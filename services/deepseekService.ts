@@ -108,8 +108,8 @@ const getDeepSeekApiKey = (): string => {
 
 const getVisionConfig = (): VisionConfig => {
   return {
-    apiKey: (import.meta.env.VITE_DEEPSEEK_API_KEY || "").trim(),
-    baseUrl: import.meta.env.PROD ? "/api/deepseek" : (import.meta.env.VITE_VISION_BASE_URL as string | undefined),
+    apiKey: (import.meta.env.VITE_VISION_API_KEY || "").trim(),
+    baseUrl: import.meta.env.PROD ? "/api/vision" : (import.meta.env.VITE_VISION_BASE_URL as string | undefined),
     model: import.meta.env.VITE_VISION_MODEL as string | undefined,
   };
 };

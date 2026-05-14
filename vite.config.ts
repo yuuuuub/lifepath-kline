@@ -26,7 +26,7 @@ export default defineConfig(({ mode }) => {
           rewrite: (path) => path.replace(/^\/api\/deepseek/, ''),
         },
         '/api/vision': {
-          target: env.VITE_VISION_BASE_URL || 'https://api.openai.com/v1',
+          target: env.VITE_VISION_BASE_URL || 'https://dashscope.aliyuncs.com/compatible-mode/v1',
           changeOrigin: true,
           rewrite: (path) => path.replace(/^\/api\/vision/, ''),
         },

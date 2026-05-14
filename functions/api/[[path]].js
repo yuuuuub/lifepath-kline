@@ -15,7 +15,7 @@ export async function onRequest(context) {
 
   const SERVICE_BASE = {
     deepseek: 'https://api.deepseek.com/v1',
-    vision: 'https://api.deepseek.com/v1',
+    vision: env.VISION_BASE_URL || 'https://dashscope.aliyuncs.com/compatible-mode/v1',
   };
 
   const baseUrl = SERVICE_BASE[service];

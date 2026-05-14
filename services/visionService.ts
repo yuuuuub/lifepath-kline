@@ -1,5 +1,5 @@
-const DEFAULT_VISION_BASE_URL = "https://api.deepseek.com/v1";
-const DEFAULT_VISION_MODEL = "deepseek-chat";
+const DEFAULT_VISION_BASE_URL = "https://dashscope.aliyuncs.com/compatible-mode/v1";
+const DEFAULT_VISION_MODEL = "qwen-vl-plus";
 
 export interface VisionConfig {
   apiKey: string;
@@ -57,7 +57,7 @@ export const extractBaziFromImage = async (
 ): Promise<VisionResult> => {
   const apiKey = config.apiKey.trim();
   if (!apiKey) {
-    throw new Error("请配置 VITE_DEEPSEEK_API_KEY（用于图片文字识别和命理分析）");
+    throw new Error("请配置 VITE_VISION_API_KEY（用于图片文字识别）");
   }
 
   const baseUrl = (config.baseUrl || DEFAULT_VISION_BASE_URL).trim().replace(/\/+$/, "");
