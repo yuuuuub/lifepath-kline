@@ -2,8 +2,11 @@ import { LifeDestinyResult } from "../types";
 import { extractBaziFromImage, VisionConfig } from "./visionService";
 import { getFromCache, saveToCache } from "./cacheService";
 
-const DEFAULT_BASE_URL = "https://api.deepseek.com/v1";
 const DEFAULT_MODEL = "deepseek-v4-pro";
+
+const getBaseUrl = (): string => {
+  return import.meta.env.PROD ? "/api/deepseek" : "https://api.deepseek.com/v1";
+};
 const MAX_TOKENS = 32768;
 const TIMEOUT_MS = 600000;
 
@@ -106,7 +109,7 @@ const getDeepSeekApiKey = (): string => {
 const getVisionConfig = (): VisionConfig => {
   return {
     apiKey: (import.meta.env.VITE_VISION_API_KEY || "").trim(),
-    baseUrl: import.meta.env.VITE_VISION_BASE_URL as string | undefined,
+    baseUrl: import.meta.env.PROD ? "/api/vision" : (import.meta.env.VITE_VISION_BASE_URL as string | undefined),
     model: import.meta.env.VITE_VISION_MODEL as string | undefined,
   };
 };
@@ -153,7 +156,7 @@ export const callDeepSeek = async (
   const timeoutId = setTimeout(() => controller.abort(), TIMEOUT_MS);
 
   try {
-    const response = await fetch(`${DEFAULT_BASE_URL}/chat/completions`, {
+    const response = await fetch(`${getBaseUrl()}/chat/completions`, {
       method: "POST",
       mode: "cors",
       credentials: "omit",
@@ -253,7 +256,7 @@ export const generateByBaziImage = async (
   try {
     const baziContext = `以下是从八字排盘截图中识别出的信息，请基于此进行详细分析：\n\n${rawText}`;
 
-    const response = await fetch(`${DEFAULT_BASE_URL}/chat/completions`, {
+    const response = await fetch(`${getBaseUrl()}/chat/completions`, {
       method: "POST",
       mode: "cors",
       credentials: "omit",
@@ -325,7 +328,7 @@ export const generateByBaziImageDirect = async (input: BaziImageInput): Promise<
   const timeoutId = setTimeout(() => controller.abort(), TIMEOUT_MS);
 
   try {
-    const response = await fetch(`${DEFAULT_BASE_URL}/chat/completions`, {
+    const response = await fetch(`${getBaseUrl()}/chat/completions`, {
       method: "POST",
       mode: "cors",
       credentials: "omit",

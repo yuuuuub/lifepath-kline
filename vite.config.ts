@@ -18,6 +18,20 @@ export default defineConfig(({ mode }) => {
       assetsDir: 'assets',
       sourcemap: false,
     },
+    server: {
+      proxy: {
+        '/api/deepseek': {
+          target: 'https://api.deepseek.com/v1',
+          changeOrigin: true,
+          rewrite: (path) => path.replace(/^\/api\/deepseek/, ''),
+        },
+        '/api/vision': {
+          target: env.VITE_VISION_BASE_URL || 'https://api.openai.com/v1',
+          changeOrigin: true,
+          rewrite: (path) => path.replace(/^\/api\/vision/, ''),
+        },
+      },
+    },
     define: {
       // Safely stringify the key. If it's missing, it will be an empty string, 
       // which will be caught by the check in geminiService.ts
