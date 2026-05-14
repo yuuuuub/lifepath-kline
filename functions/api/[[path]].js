@@ -28,24 +28,27 @@ export async function onRequest(context) {
 
   const targetUrl = `${baseUrl}/${endpoint}${url.search}`;
 
-  const proxyHeaders = new Headers(request.headers);
-  proxyHeaders.delete('host');
-  proxyHeaders.delete('origin');
-  proxyHeaders.delete('referer');
+  const proxyHeaders = new Headers();
+  for (const [key, value] of request.headers) {
+    const lower = key.toLowerCase();
+    if (lower === 'host' || lower === 'origin' || lower === 'referer') continue;
+    if (lower.startsWith('cf-') || lower === 'x-forwarded-for' || lower === 'x-real-ip') continue;
+    proxyHeaders.set(key, value);
+  }
 
   try {
-    const response = await fetch(targetUrl, {
+    const res = await fetch(targetUrl, {
       method: request.method,
       headers: proxyHeaders,
-      body: request.method !== 'GET' && request.method !== 'HEAD' ? request.body : undefined,
+      body: request.body,
     });
 
-    const responseHeaders = new Headers(response.headers);
+    const responseHeaders = new Headers(res.headers);
     responseHeaders.set('Access-Control-Allow-Origin', '*');
 
-    return new Response(response.body, {
-      status: response.status,
-      statusText: response.statusText,
+    return new Response(res.body, {
+      status: res.status,
+      statusText: res.statusText,
       headers: responseHeaders,
     });
   } catch (error) {
