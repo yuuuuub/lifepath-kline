@@ -153,6 +153,64 @@ const getDeepSeekApiKey = (): string => {
   return (import.meta.env.VITE_DEEPSEEK_API_KEY || "").trim();
 };
 
+const isNetworkError = (e: any): boolean => {
+  return e.message === "Failed to fetch" || e.name === "TypeError" ||
+    e.message?.includes("网络连接") || e.message?.includes("网络请求失败");
+};
+
+const callDeepSeekAPI = async (
+  messages: Array<{ role: string; content: string }>,
+  signal: AbortSignal,
+): Promise<LifeDestinyResult> => {
+  const apiKey = getDeepSeekApiKey();
+  if (!apiKey) throw new Error("请先配置 VITE_DEEPSEEK_API_KEY");
+
+  for (let attempt = 0; attempt <= 2; attempt++) {
+    try {
+      const response = await fetch(`${getBaseUrl()}/chat/completions`, {
+        method: "POST",
+        mode: "cors",
+        credentials: "omit",
+        headers: {
+          "Content-Type": "application/json",
+          Authorization: `Bearer ${apiKey}`,
+        },
+        signal,
+        body: JSON.stringify({
+          model: DEFAULT_MODEL,
+          temperature: 0.5,
+          max_tokens: MAX_TOKENS,
+          messages,
+        }),
+      });
+
+      if (!response.ok) {
+        const text = await response.text();
+        throw new Error(`请求失败（${response.status}）：${text || "未知错误"}`);
+      }
+
+      const json = await parseResponse(response);
+      const content = json?.choices?.[0]?.message?.content;
+      if (!content || typeof content !== "string") {
+        throw new Error("模型未返回有效内容");
+      }
+
+      const data = extractJson(content);
+      return {
+        chartData: data.chartPoints || [],
+        analysis: normalizeAnalysis(data),
+      };
+    } catch (e: any) {
+      if (attempt < 2 && isNetworkError(e)) {
+        await new Promise(r => setTimeout(r, 3000 * (attempt + 1)));
+        continue;
+      }
+      throw e;
+    }
+  }
+  throw new Error("请求失败");
+};
+
 const getVisionConfig = (): VisionConfig => {
   return {
     apiKey: (import.meta.env.VITE_VISION_API_KEY || "").trim(),
@@ -194,54 +252,17 @@ crypto（投资理财建议，100-150字）, cryptoScore, cryptoYear（财运最
 export const callDeepSeek = async (
   userPrompt: string,
 ): Promise<LifeDestinyResult> => {
-  const apiKey = getDeepSeekApiKey();
-  if (!apiKey) {
-    throw new Error("请先配置 VITE_DEEPSEEK_API_KEY");
-  }
-
   const controller = new AbortController();
   const timeoutId = setTimeout(() => controller.abort(), TIMEOUT_MS);
 
   try {
-    const response = await fetch(`${getBaseUrl()}/chat/completions`, {
-      method: "POST",
-      mode: "cors",
-      credentials: "omit",
-      headers: {
-        "Content-Type": "application/json",
-        Authorization: `Bearer ${apiKey}`,
+    return await callDeepSeekAPI([
+      {
+        role: "system",
+        content: "你是专业命理分析大师。输出完整严格 JSON，禁止 markdown。分析要详尽，流年批断要具体。",
       },
-      signal: controller.signal,
-      body: JSON.stringify({
-        model: DEFAULT_MODEL,
-        temperature: 0.5,
-        max_tokens: MAX_TOKENS,
-        messages: [
-          {
-            role: "system",
-            content: "你是专业命理分析大师。输出完整严格 JSON，禁止 markdown。分析要详尽，流年批断要具体。",
-          },
-          { role: "user", content: userPrompt },
-        ],
-      }),
-    });
-
-    if (!response.ok) {
-      const text = await response.text();
-      throw new Error(`DeepSeek 请求失败（${response.status}）：${text || "未知错误"}`);
-    }
-
-    const json = await parseResponse(response);
-    const content = json?.choices?.[0]?.message?.content;
-    if (!content || typeof content !== "string") {
-      throw new Error("DeepSeek 未返回有效内容");
-    }
-
-    const data = extractJson(content);
-    return {
-      chartData: data.chartPoints || [],
-      analysis: normalizeAnalysis(data),
-    };
+      { role: "user", content: userPrompt },
+    ], controller.signal);
   } catch (e: any) {
     if (e.name === "AbortError") {
       throw new Error("请求超时，请稍后重试");
@@ -249,7 +270,7 @@ export const callDeepSeek = async (
     if (!navigator.onLine) {
       throw new Error("网络已断开，请检查网络连接后重试");
     }
-    if (e.message === "Failed to fetch" || e.name === "TypeError") {
+    if (isNetworkError(e)) {
       throw new Error("网络请求失败，请检查网络连接或稍后重试。部分浏览器可能需要关闭广告拦截或隐私模式。");
     }
     throw e;
@@ -303,48 +324,17 @@ export const generateByBaziImage = async (
   try {
     const baziContext = `以下是从八字排盘截图中识别出的信息，请基于此进行详细分析：\n\n${rawText}`;
 
-    const response = await fetch(`${getBaseUrl()}/chat/completions`, {
-      method: "POST",
-      mode: "cors",
-      credentials: "omit",
-      headers: {
-        "Content-Type": "application/json",
-        Authorization: `Bearer ${apiKey}`,
+    const result = await callDeepSeekAPI([
+      {
+        role: "system",
+        content: "你是专业命理分析大师。输出完整严格 JSON，禁止 markdown。分析要详尽具体，流年批断要贴合命理。",
       },
-      signal: controller.signal,
-      body: JSON.stringify({
-        model: DEFAULT_MODEL,
-        temperature: 0.5,
-        max_tokens: MAX_TOKENS,
-        messages: [
-          {
-            role: "system",
-            content: "你是专业命理分析大师。输出完整严格 JSON，禁止 markdown。分析要详尽具体，流年批断要贴合命理。",
-          },
-          {
-            role: "user",
-            content: `${buildFullPrompt(input.name, input.gender)}\n\n${baziContext}`,
-          },
-        ],
-      }),
-    });
+      {
+        role: "user",
+        content: `${buildFullPrompt(input.name, input.gender)}\n\n${baziContext}`,
+      },
+    ], controller.signal);
 
-    if (!response.ok) {
-      const text = await response.text();
-      throw new Error(`请求失败（${response.status}）：${text || "未知错误"}`);
-    }
-
-    const json = await parseResponse(response);
-    const content = json?.choices?.[0]?.message?.content;
-    if (!content || typeof content !== "string") {
-      throw new Error("模型未返回有效内容");
-    }
-
-    const data = extractJson(content);
-    const result: LifeDestinyResult = {
-      chartData: data.chartPoints || [],
-      analysis: normalizeAnalysis(data),
-    };
     await saveToCache(input.name, input.gender, rawText, result);
     onProgress?.("generating", 100);
     return result;
@@ -355,7 +345,7 @@ export const generateByBaziImage = async (
     if (!navigator.onLine) {
       throw new Error("网络已断开，请检查网络连接后重试");
     }
-    if (e.message === "Failed to fetch" || e.name === "TypeError") {
+    if (isNetworkError(e)) {
       throw new Error("网络请求失败，请检查网络连接或稍后重试。部分浏览器可能需要关闭广告拦截或隐私模式。");
     }
     throw e;
@@ -366,57 +356,20 @@ export const generateByBaziImage = async (
 };
 
 export const generateByBaziImageDirect = async (input: BaziImageInput): Promise<LifeDestinyResult> => {
-  const apiKey = getDeepSeekApiKey();
-  if (!apiKey) {
-    throw new Error("请先配置 VITE_DEEPSEEK_API_KEY");
-  }
-
   const controller = new AbortController();
   const timeoutId = setTimeout(() => controller.abort(), TIMEOUT_MS);
 
   try {
-    const response = await fetch(`${getBaseUrl()}/chat/completions`, {
-      method: "POST",
-      mode: "cors",
-      credentials: "omit",
-      headers: {
-        "Content-Type": "application/json",
-        Authorization: `Bearer ${apiKey}`,
+    return await callDeepSeekAPI([
+      {
+        role: "system",
+        content: "你是专业命理分析大师。输出完整严格 JSON，禁止 markdown。分析详尽，流年批断具体。",
       },
-      signal: controller.signal,
-      body: JSON.stringify({
-        model: DEFAULT_MODEL,
-        temperature: 0.5,
-        max_tokens: MAX_TOKENS,
-        messages: [
-          {
-            role: "system",
-            content: "你是专业命理分析大师。输出完整严格 JSON，禁止 markdown。分析详尽，流年批断具体。",
-          },
-          {
-            role: "user",
-            content: buildFullPrompt(input.name, input.gender),
-          },
-        ],
-      }),
-    });
-
-    if (!response.ok) {
-      const text = await response.text();
-      throw new Error(`请求失败（${response.status}）：${text || "未知错误"}`);
-    }
-
-    const json = await parseResponse(response);
-    const content = json?.choices?.[0]?.message?.content;
-    if (!content || typeof content !== "string") {
-      throw new Error("模型未返回有效内容");
-    }
-
-    const data = extractJson(content);
-    return {
-      chartData: data.chartPoints || [],
-      analysis: normalizeAnalysis(data),
-    };
+      {
+        role: "user",
+        content: buildFullPrompt(input.name, input.gender),
+      },
+    ], controller.signal);
   } catch (e: any) {
     if (e.name === "AbortError") {
       throw new Error("请求超时，请稍后重试");
@@ -424,7 +377,7 @@ export const generateByBaziImageDirect = async (input: BaziImageInput): Promise<
     if (!navigator.onLine) {
       throw new Error("网络已断开，请检查网络连接后重试");
     }
-    if (e.message === "Failed to fetch" || e.name === "TypeError") {
+    if (isNetworkError(e)) {
       throw new Error("网络请求失败，请检查网络连接或稍后重试。部分浏览器可能需要关闭广告拦截或隐私模式。");
     }
     throw e;
