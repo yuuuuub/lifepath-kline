@@ -4,6 +4,8 @@ const DB_NAME = "lifepath-kline-cache";
 const DB_VERSION = 1;
 const STORE_NAME = "results";
 
+const API_BASE = import.meta.env.PROD ? "/api/results" : "";
+
 function openDB(): Promise<IDBDatabase> {
   return new Promise((resolve, reject) => {
     const request = indexedDB.open(DB_NAME, DB_VERSION);
@@ -62,32 +64,47 @@ async function makeCacheKey(name: string, gender: string, rawText: string): Prom
   return hashArray.map(b => b.toString(16).padStart(2, "0")).join("");
 }
 
-export async function getFromCache(name: string, gender: string, rawText: string): Promise<LifeDestinyResult | null> {
+async function fetchFromD1(key: string): Promise<LifeDestinyResult | null> {
+  if (!API_BASE) return null;
   try {
-    const key = await makeCacheKey(name, gender, rawText);
+    const res = await fetch(`${API_BASE}?key=${encodeURIComponent(key)}`);
+    if (!res.ok) return null;
+    const text = await res.text();
+    if (!text || text === "null") return null;
+    return JSON.parse(text);
+  } catch {
+    return null;
+  }
+}
+
+async function saveToD1(key: string, name: string, gender: string, rawText: string, result: LifeDestinyResult): Promise<void> {
+  if (!API_BASE) return;
+  try {
+    fetch(`${API_BASE}`, {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ key, name, gender, rawText, result }),
+    });
+  } catch {}
+}
+
+async function getFromIDB(key: string): Promise<LifeDestinyResult | null> {
+  try {
     const db = await openDB();
     return new Promise((resolve, reject) => {
       const tx = db.transaction(STORE_NAME, "readonly");
       const store = tx.objectStore(STORE_NAME);
-      const request = store.get(key);
-      request.onsuccess = () => {
-        const val = request.result;
-        db.close();
-        resolve(val ?? null);
-      };
-      request.onerror = () => {
-        db.close();
-        reject(request.error);
-      };
+      const req = store.get(key);
+      req.onsuccess = () => { db.close(); resolve(req.result ?? null); };
+      req.onerror = () => { db.close(); reject(req.error); };
     });
   } catch {
     return null;
   }
 }
 
-export async function saveToCache(name: string, gender: string, rawText: string, result: LifeDestinyResult): Promise<void> {
+async function saveToIDB(key: string, result: LifeDestinyResult): Promise<void> {
   try {
-    const key = await makeCacheKey(name, gender, rawText);
     const db = await openDB();
     return new Promise((resolve, reject) => {
       const tx = db.transaction(STORE_NAME, "readwrite");
@@ -97,9 +114,28 @@ export async function saveToCache(name: string, gender: string, rawText: string,
       tx.onerror = () => { db.close(); reject(tx.error); };
       tx.onabort = () => { db.close(); reject(tx.error); };
     });
-  } catch {
-    // 存缓存失败不阻断主流程
+  } catch {}
+}
+
+export async function getFromCache(name: string, gender: string, rawText: string): Promise<LifeDestinyResult | null> {
+  const key = await makeCacheKey(name, gender, rawText);
+
+  const local = await getFromIDB(key);
+  if (local) return local;
+
+  const remote = await fetchFromD1(key);
+  if (remote) {
+    saveToIDB(key, remote);
+    return remote;
   }
+
+  return null;
+}
+
+export async function saveToCache(name: string, gender: string, rawText: string, result: LifeDestinyResult): Promise<void> {
+  const key = await makeCacheKey(name, gender, rawText);
+  saveToIDB(key, result);
+  saveToD1(key, name, gender, rawText, result);
 }
 
 export async function clearCache(): Promise<void> {
