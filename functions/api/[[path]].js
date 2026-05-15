@@ -59,6 +59,7 @@ export async function onRequest(context) {
     const useStream = service === 'deepseek' && endpoint === 'chat/completions';
     if (useStream) {
       bodyJson.stream = true;
+      bodyJson.stream_options = { include_usage: true };
     }
 
     const res = await fetch(targetUrl, {
@@ -82,10 +83,42 @@ export async function onRequest(context) {
       responseHeaders.set('Content-Type', 'text/event-stream');
       responseHeaders.set('Cache-Control', 'no-cache');
       responseHeaders.set('Connection', 'keep-alive');
-    } else {
-      const upstreamCT = res.headers.get('Content-Type') || 'application/json';
-      responseHeaders.set('Content-Type', upstreamCT);
+
+      const upstreamReader = res.body.getReader();
+      const encoder = new TextEncoder();
+      const keepaliveMsg = encoder.encode(': keepalive\n\n');
+      let lastDataTime = Date.now();
+
+      const keepaliveStream = new ReadableStream({
+        async start(controller) {
+          const keepaliveTimer = setInterval(() => {
+            if (Date.now() - lastDataTime > 25000) {
+              try { controller.enqueue(keepaliveMsg); } catch { clearInterval(keepaliveTimer); }
+            }
+          }, 25000);
+
+          try {
+            while (true) {
+              const { done, value } = await upstreamReader.read();
+              if (done) { clearInterval(keepaliveTimer); controller.close(); break; }
+              lastDataTime = Date.now();
+              controller.enqueue(value);
+            }
+          } catch (e) {
+            clearInterval(keepaliveTimer);
+            controller.error(e);
+          }
+        },
+      });
+
+      return new Response(keepaliveStream, {
+        status: res.status,
+        headers: responseHeaders,
+      });
     }
+
+    const upstreamCT = res.headers.get('Content-Type') || 'application/json';
+    responseHeaders.set('Content-Type', upstreamCT);
 
     return new Response(res.body, {
       status: res.status,
