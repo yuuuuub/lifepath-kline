@@ -20,6 +20,53 @@ export interface BaziImageInput {
   imageMimeType: string;
 }
 
+const parseResponse = async (response: Response): Promise<any> => {
+  const ct = response.headers.get("content-type") || "";
+  if (ct.includes("text/event-stream")) {
+    const reader = response.body!.getReader();
+    const decoder = new TextDecoder();
+    let fullContent = "";
+    let finishReason = "";
+    let model = "";
+    let id = "";
+    let buffer = "";
+
+    while (true) {
+      const { done, value } = await reader.read();
+      if (done) break;
+      buffer += decoder.decode(value, { stream: true });
+      const lines = buffer.split("\n");
+      buffer = lines.pop() || "";
+      for (const line of lines) {
+        const trimmed = line.trim();
+        if (!trimmed.startsWith("data: ")) continue;
+        const data = trimmed.slice(6);
+        if (data === "[DONE]") continue;
+        try {
+          const chunk = JSON.parse(data);
+          id = chunk.id || id;
+          model = chunk.model || model;
+          const delta = chunk.choices?.[0]?.delta?.content;
+          if (delta) fullContent += delta;
+          if (chunk.choices?.[0]?.finish_reason) finishReason = chunk.choices[0].finish_reason;
+        } catch {}
+      }
+    }
+
+    return {
+      id,
+      model,
+      choices: [{
+        index: 0,
+        message: { role: "assistant", content: fullContent },
+        finish_reason: finishReason || "stop",
+      }],
+    };
+  }
+
+  return response.json();
+};
+
 const extractJson = (content: string): any => {
   let jsonContent = content.trim();
   const jsonMatch = jsonContent.match(/```(?:json)?\s*([\s\S]*?)```/);
@@ -184,7 +231,7 @@ export const callDeepSeek = async (
       throw new Error(`DeepSeek 请求失败（${response.status}）：${text || "未知错误"}`);
     }
 
-    const json = await response.json();
+    const json = await parseResponse(response);
     const content = json?.choices?.[0]?.message?.content;
     if (!content || typeof content !== "string") {
       throw new Error("DeepSeek 未返回有效内容");
@@ -287,7 +334,7 @@ export const generateByBaziImage = async (
       throw new Error(`请求失败（${response.status}）：${text || "未知错误"}`);
     }
 
-    const json = await response.json();
+    const json = await parseResponse(response);
     const content = json?.choices?.[0]?.message?.content;
     if (!content || typeof content !== "string") {
       throw new Error("模型未返回有效内容");
@@ -359,7 +406,7 @@ export const generateByBaziImageDirect = async (input: BaziImageInput): Promise<
       throw new Error(`请求失败（${response.status}）：${text || "未知错误"}`);
     }
 
-    const json = await response.json();
+    const json = await parseResponse(response);
     const content = json?.choices?.[0]?.message?.content;
     if (!content || typeof content !== "string") {
       throw new Error("模型未返回有效内容");
