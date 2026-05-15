@@ -19,31 +19,38 @@ function openDB(): Promise<IDBDatabase> {
 }
 
 function normalizeText(s: string): string {
-  return s.replace(/[\s\u3000]+/g, "").trim();
+  return s
+    .replace(/[\s\u3000]+/g, "")
+    .replace(/[：:]/g, ":")
+    .trim();
+}
+
+function extractField(text: string, pattern: RegExp): string {
+  const m = text.match(pattern);
+  if (!m) return "";
+  return m[1]
+    .replace(/[，,、\s\u3000]+/g, ",")
+    .replace(/[岁年]/g, "")
+    .replace(/^,+|,+$/g, "")
+    .trim();
 }
 
 function extractBaziCore(rawText: string): string {
   const normalized = normalizeText(rawText);
-  const fields: string[] = [];
 
-  const patterns = [
-    /年柱[：:](.+?)(?=日柱|月柱|时柱|起运|大运|出生|$)/,
-    /月柱[：:](.+?)(?=日柱|时柱|年柱|起运|大运|出生|$)/,
-    /日柱[：:](.+?)(?=时柱|月柱|年柱|起运|大运|出生|$)/,
-    /时柱[：:](.+?)(?=起运|大运|出生|年柱|月柱|日柱|$)/,
-    /起运年龄[：:](.+?)(?=大运|出生|年柱|月柱|日柱|时柱|$)/,
-    /大运[：:](.+?)(?=出生|年柱|月柱|日柱|时柱|起运|$)/,
-    /出生年份[：:](.+?)(?=年柱|月柱|日柱|时柱|起运|大运|$)/,
+  const fields = [
+    extractField(normalized, /年柱:(.+?)(?=日柱:|月柱:|时柱:|起运|大运|出生|$)/),
+    extractField(normalized, /月柱:(.+?)(?=日柱:|时柱:|年柱:|起运|大运|出生|$)/),
+    extractField(normalized, /日柱:(.+?)(?=时柱:|月柱:|年柱:|起运|大运|出生|$)/),
+    extractField(normalized, /时柱:(.+?)(?=起运|大运|出生|月柱:|日柱:|年柱:|$)/),
+    extractField(normalized, /起运年龄:(.+?)(?=大运|出生|年柱:|月柱:|日柱:|时柱:|$)/),
+    extractField(normalized, /大运:(.+?)(?=出生|年柱:|月柱:|日柱:|时柱:|起运|$)/),
+    extractField(normalized, /出生年份:(.+?)(?=年柱:|月柱:|日柱:|时柱:|起运|大运|$)/),
   ];
 
-  for (const pattern of patterns) {
-    const m = normalized.match(pattern);
-    if (m) {
-      fields.push(m[1].replace(/[，,、\s\u3000]+/g, ""));
-    }
-  }
-
-  return fields.length > 0 ? fields.join("|") : normalized;
+  const nonEmpty = fields.filter(f => f.length > 0);
+  if (nonEmpty.length >= 4) return nonEmpty.join("|");
+  return normalized;
 }
 
 async function makeCacheKey(name: string, gender: string, rawText: string): Promise<string> {
