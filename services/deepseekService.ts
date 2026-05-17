@@ -1,5 +1,5 @@
 import { LifeDestinyResult } from "../types";
-import { extractBaziFromImage, VisionConfig } from "./visionService";
+import { extractBaziFromImageBaidu, BaiduOcrConfig } from "./baiduOcrService";
 import { getFromCache, saveToCache } from "./cacheService";
 
 const DEFAULT_MODEL = "deepseek-v4-pro";
@@ -164,11 +164,11 @@ const callDeepSeekAPI = async (
   throw new Error("请求失败");
 };
 
-const getVisionConfig = (): VisionConfig => {
+const getBaiduOcrConfig = (): BaiduOcrConfig => {
   return {
-    apiKey: (import.meta.env.VITE_VISION_API_KEY || "").trim(),
-    baseUrl: import.meta.env.PROD ? "/api/vision" : (import.meta.env.VITE_VISION_BASE_URL as string | undefined),
-    model: import.meta.env.VITE_VISION_MODEL as string | undefined,
+    apiKey: (import.meta.env.VITE_BAIDU_OCR_API_KEY || "").trim(),
+    secretKey: (import.meta.env.VITE_BAIDU_OCR_SECRET_KEY || "").trim(),
+    proxyUrl: import.meta.env.PROD ? "/api/baidu-ocr" : undefined,
   };
 };
 
@@ -236,19 +236,12 @@ export const generateByBaziImage = async (
   input: BaziImageInput,
   onProgress?: ProgressCallback,
 ): Promise<LifeDestinyResult> => {
-  const visionConfig = getVisionConfig();
-
-  if (!visionConfig.apiKey) {
-    throw new Error("请先配置 VITE_VISION_API_KEY（视觉识别 API Key）");
-  }
+  const ocrConfig = getBaiduOcrConfig();
 
   onProgress?.("ocr", 10);
-  const { rawText } = await extractBaziFromImage(
+  const { rawText } = await extractBaziFromImageBaidu(
     input.imageBase64,
-    input.imageMimeType,
-    input.name,
-    input.gender,
-    visionConfig
+    ocrConfig
   );
 
   const apiKey = getDeepSeekApiKey();

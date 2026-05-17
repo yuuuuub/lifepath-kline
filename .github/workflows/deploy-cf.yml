@@ -18,15 +18,9 @@ jobs:
       - run: npm ci
         env:
           VITE_DEEPSEEK_API_KEY: ${{ secrets.VITE_DEEPSEEK_API_KEY }}
-          VITE_VISION_API_KEY: ${{ secrets.VITE_VISION_API_KEY }}
-          VITE_VISION_BASE_URL: ${{ secrets.VITE_VISION_BASE_URL }}
-          VITE_VISION_MODEL: ${{ secrets.VITE_VISION_MODEL }}
       - run: npm run build
         env:
           VITE_DEEPSEEK_API_KEY: ${{ secrets.VITE_DEEPSEEK_API_KEY }}
-          VITE_VISION_API_KEY: ${{ secrets.VITE_VISION_API_KEY }}
-          VITE_VISION_BASE_URL: ${{ secrets.VITE_VISION_BASE_URL }}
-          VITE_VISION_MODEL: ${{ secrets.VITE_VISION_MODEL }}
       - uses: cloudflare/wrangler-action@v3
         with:
           apiToken: ${{ secrets.CLOUDFLARE_API_TOKEN }}
