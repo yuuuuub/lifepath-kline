@@ -1,5 +1,5 @@
 const DEFAULT_VISION_BASE_URL = "https://dashscope.aliyuncs.com/compatible-mode/v1";
-const DEFAULT_VISION_MODEL = "qwen-vl-plus";
+const DEFAULT_VISION_MODEL = "qwen-vl-ocr";
 
 export interface VisionConfig {
   apiKey: string;
@@ -73,7 +73,7 @@ export const extractBaziFromImage = async (
     },
     body: JSON.stringify({
       model,
-      temperature: 0.1,
+      temperature: 0,
       messages: [
         {
           role: "user",
