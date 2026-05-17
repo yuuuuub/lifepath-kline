@@ -268,12 +268,19 @@ export const generateByBaziImage = async (
   const timeoutId = setTimeout(() => controller.abort(), TIMEOUT_MS);
 
   try {
-    const baziContext = `以下是从八字排盘截图中识别出的信息，请基于此进行详细分析：\n\n${rawText}`;
+    const baziContext = `以下是从八字排盘截图中识别出的原始 OCR 文本。
+
+请你先按以下要求整理识别结果，再做命理分析：
+
+完整识别整张八字排盘图片所有内容，原样提取所有文字与干支信息，不准改动任何数据，按照【基础信息、四柱排盘、神煞、干支关系、大运排盘、岁运关系、流年流月】七大固定板块整理成文，沿用标准八字整理格式输出，纯提取无命理分析。
+
+原始 OCR 文本：
+${rawText}`;
 
     const result = await callDeepSeekAPI([
       {
         role: "system",
-        content: "你是专业命理分析大师。输出完整严格 JSON，禁止 markdown。分析要详尽具体，流年批断要贴合命理。",
+        content: "你是专业命理分析大师。收到 OCR 文本后，先按七大板块（基础信息、四柱排盘、神煞、干支关系、大运排盘、岁运关系、流年流月）原样整理数据，不准改动任何干支与神煞信息；整理完毕后再基于原文数据生成命理分析 JSON。输出完整严格 JSON，禁止 markdown。分析要详尽具体，流年批断要贴合命理。",
       },
       {
         role: "user",
