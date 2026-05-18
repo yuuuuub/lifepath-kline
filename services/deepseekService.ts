@@ -20,6 +20,65 @@ export interface BaziImageInput {
   imageMimeType: string;
 }
 
+const parseSSEStream = async (
+  response: Response,
+  signal?: AbortSignal,
+  onToken?: (accumulated: string) => void,
+): Promise<{ content: string; usage: any }> => {
+  const reader = response.body!.getReader();
+  const decoder = new TextDecoder();
+  let buffer = '';
+  let fullContent = '';
+  let usage: any = null;
+
+  try {
+    while (true) {
+      if (signal?.aborted) throw new DOMException('Aborted', 'AbortError');
+      const { done, value } = await reader.read();
+      if (done) break;
+
+      buffer += decoder.decode(value, { stream: true });
+      const lines = buffer.split('\n');
+      buffer = lines.pop() || '';
+
+      for (const line of lines) {
+        const trimmed = line.trim();
+        if (!trimmed || trimmed.startsWith(':')) continue;
+        if (!trimmed.startsWith('data: ')) continue;
+
+        const data = trimmed.slice(6).trim();
+        if (data === '[DONE]') continue;
+
+        try {
+          const chunk = JSON.parse(data);
+          const delta = chunk.choices?.[0]?.delta?.content || '';
+          fullContent += delta;
+          onToken?.(fullContent);
+          if (chunk.usage) usage = chunk.usage;
+        } catch {}
+      }
+    }
+
+    if (buffer.trim().startsWith('data: ')) {
+      const data = buffer.trim().slice(6).trim();
+      if (data !== '[DONE]') {
+        try {
+          const chunk = JSON.parse(data);
+          const delta = chunk.choices?.[0]?.delta?.content || '';
+          fullContent += delta;
+          onToken?.(fullContent);
+          if (chunk.usage) usage = chunk.usage;
+        } catch {}
+      }
+    }
+  } catch (e) {
+    reader.cancel();
+    throw e;
+  }
+
+  return { content: fullContent, usage };
+};
+
 const extractJson = (content: string): any => {
   let jsonContent = content.trim();
   const jsonMatch = jsonContent.match(/```(?:json)?\s*([\s\S]*?)```/);
@@ -144,8 +203,14 @@ const callDeepSeekAPI = async (
         throw new Error(`请求失败（${response.status}）：${text || "未知错误"}`);
       }
 
-      const json = await response.json();
-      const content = json?.choices?.[0]?.message?.content;
+      let content: string;
+      if (isProd) {
+        const result = await parseSSEStream(response, signal);
+        content = result.content;
+      } else {
+        const json = await response.json();
+        content = json?.choices?.[0]?.message?.content;
+      }
       if (!content || typeof content !== "string") {
         throw new Error("模型未返回有效内容");
       }
@@ -404,8 +469,15 @@ ${rawText}
     });
 
     if (!response.ok) throw new Error(`整理请求失败（${response.status}）`);
-    const json = await response.json();
-    const content = json?.choices?.[0]?.message?.content;
+
+    let content: string;
+    if (isProd) {
+      const result = await parseSSEStream(response, controller.signal);
+      content = result.content;
+    } else {
+      const json = await response.json();
+      content = json?.choices?.[0]?.message?.content;
+    }
     if (!content || typeof content !== "string") throw new Error("模型未返回有效内容");
 
     const data = extractJson(content);
@@ -623,8 +695,14 @@ ${ctx.rawText}`;
     clearInterval(timer);
     onProgress?.(70);
     if (!response.ok) throw new Error(`请求失败（${response.status}）`);
-    const json = await response.json();
-    const content = json?.choices?.[0]?.message?.content;
+    let content: string;
+    if (isProd) {
+      const result = await parseSSEStream(response, controller.signal);
+      content = result.content;
+    } else {
+      const json = await response.json();
+      content = json?.choices?.[0]?.message?.content;
+    }
     if (!content || typeof content !== "string") throw new Error("模型未返回有效内容");
 
     const data = extractJson(content);

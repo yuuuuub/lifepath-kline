@@ -1,34 +1,34 @@
 export async function onRequest(context) {
   const { request, env } = context;
 
-  if (request.method === 'OPTIONS') {
-    return new Response(null, {
-      headers: {
-        'Access-Control-Allow-Origin': '*',
-        'Access-Control-Allow-Methods': 'POST, OPTIONS',
-        'Access-Control-Allow-Headers': 'Content-Type',
-      },
-    });
-  }
-
   const respHeaders = {
-    'Content-Type': 'application/json',
     'Access-Control-Allow-Origin': '*',
+    'Access-Control-Allow-Methods': 'POST, OPTIONS',
+    'Access-Control-Allow-Headers': 'Content-Type',
   };
 
+  if (request.method === 'OPTIONS') {
+    return new Response(null, { headers: respHeaders });
+  }
+
   if (request.method !== 'POST') {
-    return new Response(JSON.stringify({ error: 'Method not allowed' }), { status: 405, headers: respHeaders });
+    return new Response(JSON.stringify({ error: 'Method not allowed' }), {
+      status: 405,
+      headers: { ...respHeaders, 'Content-Type': 'application/json' },
+    });
   }
 
   const apiKey = env.DEEPSEEK_API_KEY;
   if (!apiKey) {
-    return new Response(JSON.stringify({ error: '请在 Cloudflare Pages 环境变量中设置 DEEPSEEK_API_KEY' }), { status: 500, headers: respHeaders });
+    return new Response(JSON.stringify({ error: '请在 Cloudflare Pages 环境变量中设置 DEEPSEEK_API_KEY' }), {
+      status: 500,
+      headers: { ...respHeaders, 'Content-Type': 'application/json' },
+    });
   }
 
   try {
     const body = await request.json();
 
-    // 内部强制流式请求，防止长时间生成时 Cloudflare 30s 超时
     body.stream = true;
     body.stream_options = { include_usage: true };
 
@@ -43,61 +43,52 @@ export async function onRequest(context) {
 
     if (!deepseekRes.ok) {
       const errorText = await deepseekRes.text();
-      return new Response(errorText, { status: deepseekRes.status, headers: respHeaders });
+      return new Response(errorText, {
+        status: deepseekRes.status,
+        headers: { ...respHeaders, 'Content-Type': 'application/json' },
+      });
     }
 
-    // 收集 SSE 流，拼成完整 JSON 返回给前端
-    const reader = deepseekRes.body.getReader();
-    const decoder = new TextDecoder();
-    const chunks = [];
-    let buffer = '';
+    // 流式透传 SSE，避免 Cloudflare Functions 超时
+    const upstreamReader = deepseekRes.body.getReader();
+    const encoder = new TextEncoder();
+    const keepaliveMsg = encoder.encode(': keepalive\n\n');
+    let lastDataTime = Date.now();
 
-    while (true) {
-      const { done, value } = await reader.read();
-      if (done) break;
+    const sseStream = new ReadableStream({
+      async start(controller) {
+        const keepaliveTimer = setInterval(() => {
+          if (Date.now() - lastDataTime > 25000) {
+            try { controller.enqueue(keepaliveMsg); } catch { clearInterval(keepaliveTimer); }
+          }
+        }, 25000);
 
-      buffer += decoder.decode(value, { stream: true });
-      const lines = buffer.split('\n');
-      buffer = lines.pop() || '';
-
-      for (const line of lines) {
-        if (line.startsWith('data: ')) {
-          const data = line.slice(6).trim();
-          if (data === '[DONE]') continue;
-          chunks.push(data);
+        try {
+          while (true) {
+            const { done, value } = await upstreamReader.read();
+            if (done) { clearInterval(keepaliveTimer); controller.close(); break; }
+            lastDataTime = Date.now();
+            controller.enqueue(value);
+          }
+        } catch (e) {
+          clearInterval(keepaliveTimer);
+          controller.error(e);
         }
-      }
-    }
+      },
+    });
 
-    // 处理结尾剩余
-    if (buffer.startsWith('data: ')) {
-      const data = buffer.slice(6).trim();
-      if (data !== '[DONE]') chunks.push(data);
-    }
-
-    // 拼装完整 JSON 响应（只在最后一个 chunk 中有 usage 信息）
-    const lastChunk = chunks.length > 0 ? JSON.parse(chunks[chunks.length - 1]) : {};
-    const allContent = chunks
-      .map(c => { try { return JSON.parse(c); } catch { return null; } })
-      .filter(Boolean)
-      .map(c => c.choices?.[0]?.delta?.content || '')
-      .join('');
-
-    const result = {
-      id: lastChunk.id || 'chatcmpl-stream',
-      object: 'chat.completion',
-      created: lastChunk.created || Math.floor(Date.now() / 1000),
-      model: lastChunk.model || 'deepseek-chat',
-      choices: [{
-        index: 0,
-        message: { role: 'assistant', content: allContent },
-        finish_reason: lastChunk.choices?.[0]?.finish_reason || 'stop',
-      }],
-      usage: lastChunk.usage || null,
-    };
-
-    return new Response(JSON.stringify(result), { headers: respHeaders });
+    return new Response(sseStream, {
+      headers: {
+        ...respHeaders,
+        'Content-Type': 'text/event-stream',
+        'Cache-Control': 'no-cache',
+        'Connection': 'keep-alive',
+      },
+    });
   } catch (e) {
-    return new Response(JSON.stringify({ error: `请求失败：${e.message}` }), { status: 500, headers: respHeaders });
+    return new Response(JSON.stringify({ error: `请求失败：${e.message}` }), {
+      status: 500,
+      headers: { ...respHeaders, 'Content-Type': 'application/json' },
+    });
   }
 }
