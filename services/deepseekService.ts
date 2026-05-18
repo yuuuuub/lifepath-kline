@@ -5,7 +5,7 @@ import { getFromCache, saveToCache } from "./cacheService";
 const DEFAULT_MODEL = "deepseek-v4-pro";
 
 const getBaseUrl = (): string => {
-  return "https://api.deepseek.com/v1";
+  return import.meta.env.PROD ? "/api/deepseek" : "https://api.deepseek.com/v1";
 };
 const MAX_TOKENS = 32768;
 const TIMEOUT_MS = 1200000;
@@ -116,19 +116,20 @@ const callDeepSeekAPI = async (
   messages: Array<{ role: string; content: string }>,
   signal: AbortSignal,
 ): Promise<LifeDestinyResult> => {
+  const isProd = import.meta.env.PROD;
   const apiKey = getDeepSeekApiKey();
-  if (!apiKey) throw new Error("请先配置 VITE_DEEPSEEK_API_KEY");
+  if (!isProd && !apiKey) throw new Error("请先配置 VITE_DEEPSEEK_API_KEY");
 
   for (let attempt = 0; attempt <= 2; attempt++) {
     try {
+      const reqHeaders: Record<string, string> = { "Content-Type": "application/json" };
+      if (!isProd) reqHeaders["Authorization"] = `Bearer ${apiKey}`;
+
       const response = await fetch(`${getBaseUrl()}/chat/completions`, {
         method: "POST",
         mode: "cors",
         credentials: "omit",
-        headers: {
-          "Content-Type": "application/json",
-          Authorization: `Bearer ${apiKey}`,
-        },
+        headers: reqHeaders,
         signal,
         body: JSON.stringify({
           model: DEFAULT_MODEL,
@@ -249,11 +250,6 @@ export const generateByBaziImage = async (
     input.imageBase64,
     ocrConfig
   );
-
-  const apiKey = getDeepSeekApiKey();
-  if (!apiKey) {
-    throw new Error("请先配置 VITE_DEEPSEEK_API_KEY");
-  }
 
   const cached = await getFromCache(input.name, input.gender, rawText);
   if (cached) {
