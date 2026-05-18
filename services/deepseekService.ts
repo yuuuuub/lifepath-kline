@@ -545,9 +545,11 @@ export const getDirectionLabel = (d: DirectionType) => DIRECTION_CONFIG[d].label
 
 const buildDirectionPrompt = (ctx: OcrContext, direction: DirectionType): string => {
   const orientationNote = direction === "marriage" && ctx.orientation === "同性恋"
-    ? "由于用户为同性恋取向，请按同性视角解读情感关系，正官/七杀对应同性伴侣，正财/偏财调整为同性缘分的辅助参考。"
+    ? "由于用户为同性恋取向，请完全按同性视角解读情感关系。正官/七杀对应同性伴侣，正财/偏财调整为同性缘分的辅助参考。preference 字段明确写出用户喜欢同性（男生喜欢男生/女生喜欢女生）。"
     : direction === "marriage" && ctx.orientation === "双性恋"
-    ? "由于用户为双性恋取向，请综合异性恋和同性恋双重视角解读情感关系，兼顾正官/七杀（异性）、正财/偏财（传统异性）、同性十神映射（同性伴侣）的多元解读。"
+    ? "由于用户为双性恋取向，请综合异性恋和同性恋双重视角解读情感关系，兼顾正官/七杀（异性）、正财/偏财（传统异性）、同性十神映射（同性伴侣）的多元解读。preference 字段明确写出用户双性恋倾向，喜欢对象包括男生和女生。"
+    : direction === "marriage"
+    ? "由于用户为异性恋取向，请按传统异性视角解读情感关系。preference 字段明确写出用户喜欢异性（乾造喜欢女生/坤造喜欢男生）。"
     : "";
 
   const prompts: Record<DirectionType, string> = {
@@ -598,6 +600,7 @@ ${orientationNote}
   "score": 0-10,
   "content": "150-250字综合情感分析",
   "highlights": ["3-5个关键发现点"],
+  "preference": "一句话明确用户的性取向偏好，如'命主为乾造男性，异性恋取向，喜欢女生，正财透干异性缘佳'或'命主为乾造男性，同性恋取向，喜欢男生，七杀为同性正缘'",
   "timeline": [
     {"label": "少年", "desc": "少年时期情感简评"},
     {"label": "青年", "desc": "青年时期情感简评"},
@@ -688,7 +691,7 @@ export const generateDirectionAnalysis = async (
     );
   }
 
-  const cached = await getDirectionCache(ctx.name, ctx.gender, ctx.rawText, direction);
+  const cached = await getDirectionCache(ctx.name, ctx.gender, ctx.rawText, direction, ctx.orientation);
   if (cached) { onProgress?.(100); return cached; }
 
   onProgress?.(10);
@@ -752,9 +755,10 @@ ${ctx.rawText}`;
       score: typeof data.score === "number" ? data.score : 5,
       highlights: Array.isArray(data.highlights) ? data.highlights : [],
       timeline: Array.isArray(data.timeline) ? data.timeline : undefined,
+      preference: typeof data.preference === "string" ? data.preference : undefined,
     };
 
-    saveDirectionCache(ctx.name, ctx.gender, ctx.rawText, direction, result);
+    saveDirectionCache(ctx.name, ctx.gender, ctx.rawText, direction, result, ctx.orientation);
     onProgress?.(100);
     return result;
   } catch (e: any) {

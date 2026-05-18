@@ -153,13 +153,14 @@ export async function saveToCache(name: string, gender: string, rawText: string,
   saveToD1(key, name, gender, rawText, result);
 }
 
-async function makeDirectionKey(name: string, gender: string, rawText: string, direction: DirectionType): Promise<string> {
+async function makeDirectionKey(name: string, gender: string, rawText: string, direction: DirectionType, orientation?: string): Promise<string> {
   const base = await makeCacheKey(name, gender, rawText);
-  return `${base}:${direction}`;
+  const suffix = orientation ? `:${orientation}` : '';
+  return `${base}:${direction}${suffix}`;
 }
 
-export async function getDirectionCache(name: string, gender: string, rawText: string, direction: DirectionType): Promise<DirectionResult | null> {
-  const key = await makeDirectionKey(name, gender, rawText, direction);
+export async function getDirectionCache(name: string, gender: string, rawText: string, direction: DirectionType, orientation?: string): Promise<DirectionResult | null> {
+  const key = await makeDirectionKey(name, gender, rawText, direction, orientation);
   try {
     const db = await openDB();
     return new Promise((resolve, reject) => {
@@ -174,8 +175,8 @@ export async function getDirectionCache(name: string, gender: string, rawText: s
   }
 }
 
-export async function saveDirectionCache(name: string, gender: string, rawText: string, direction: DirectionType, result: DirectionResult): Promise<void> {
-  const key = await makeDirectionKey(name, gender, rawText, direction);
+export async function saveDirectionCache(name: string, gender: string, rawText: string, direction: DirectionType, result: DirectionResult, orientation?: string): Promise<void> {
+  const key = await makeDirectionKey(name, gender, rawText, direction, orientation);
   try {
     const db = await openDB();
     return new Promise((resolve, reject) => {

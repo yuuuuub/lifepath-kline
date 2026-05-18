@@ -93,4 +93,5 @@ export interface DirectionResult {
   score: number;
   highlights: string[];
   timeline?: Array<{ year?: number; age?: number; label: string; desc: string }>;
+  preference?: string;
 }

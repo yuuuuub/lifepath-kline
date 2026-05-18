@@ -3,7 +3,7 @@ import { DirectionType, DirectionResult, OcrContext, LifeDestinyResult } from ".
 import { generateDirectionAnalysis, getDirectionLabel } from "../services/deepseekService";
 import LifeKLineChart, { groupByDaYun } from "./LifeKLineChart";
 import AnalysisResult from "./AnalysisResult";
-import { ArrowLeft, Sparkles, Loader2, ChevronDown, ChevronUp } from "lucide-react";
+import { ArrowLeft, Sparkles, Loader2, ChevronDown, ChevronUp, Heart } from "lucide-react";
 
 interface AnalysisHubProps {
   ocrContext: OcrContext;
@@ -165,6 +165,13 @@ const AnalysisHub: React.FC<AnalysisHubProps> = ({ ocrContext, onReset }) => {
               评分 {dr.score}/10
             </div>
           </div>
+
+          {dr.preference && (
+            <div className="bg-pink-50 border border-pink-200 rounded-xl px-5 py-3 flex items-center gap-3">
+              <Heart className="w-5 h-5 text-pink-500 flex-shrink-0" />
+              <p className="text-sm font-medium text-pink-800">{dr.preference}</p>
+            </div>
+          )}
 
           <div className="bg-gradient-to-r from-indigo-50 to-purple-50 rounded-xl p-5 border border-indigo-100">
             <p className="text-sm text-gray-700 leading-relaxed whitespace-pre-wrap">{dr.content}</p>
