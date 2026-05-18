@@ -8,7 +8,7 @@ const getBaseUrl = (): string => {
   return "https://api.deepseek.com/v1";
 };
 const MAX_TOKENS = 32768;
-const TIMEOUT_MS = 1200000;
+const TIMEOUT_MS = 600000;
 
 export type ProgressStage = "ocr" | "cached" | "generating";
 export type ProgressCallback = (stage: ProgressStage, progress?: number) => void;
@@ -100,7 +100,6 @@ const normalizeAnalysis = (data: any): LifeDestinyResult["analysis"] => ({
   cryptoYear: typeof data.cryptoYear === 'string' ? data.cryptoYear : "待定",
   cryptoStyle: typeof data.cryptoStyle === 'string' ? data.cryptoStyle : "指数基金定投",
   daYunReasons: typeof data.daYunReasons === 'object' && data.daYunReasons !== null ? data.daYunReasons : {},
-  baziSections: typeof data.baziSections === 'object' && data.baziSections !== null ? data.baziSections : {},
 });
 
 const getDeepSeekApiKey = (): string => {
@@ -194,13 +193,8 @@ crypto（投资理财建议，100-150字）, cryptoScore, cryptoYear（财运最
 - JSON 格式：{ "大运名": "批断内容", ... }
 - 例：{ "甲子大运": "水木相生，少年得志...", "童限": "根基未稳，宜培养心性..." }
 
-== baziSections（八字排盘七大板块整理）==
-- 将 OCR 识别结果按以下七大板块整理成标准格式：
-  { "基础信息": "...", "四柱排盘": "...", "神煞": "...", "干支关系": "...", "大运排盘": "...", "岁运关系": "...", "流年流月": "..." }
-- 每个板块完整保留对应信息，不省略不修改
-
 == chartPoints（流年K线）==
-- 共100条，覆盖1-100岁每条流年
+- 共约100条，覆盖1-100岁每条流年
 - 每项：age, year, daYun（所属大运名称）, ganZhi（流年干支）, open, close, high, low, score（0-10）, reason（20-40字批断）
 - 起运前大运归为"童限"
 - 让评分呈现明显波动，体现人生起伏，禁止平滑直线
@@ -266,9 +260,9 @@ export const generateByBaziImage = async (
   const startTime = Date.now();
   const timer = setInterval(() => {
     const elapsed = Date.now() - startTime;
-    const pct = Math.min(95, 20 + Math.round((elapsed / 1200000) * 75));
+    const pct = Math.min(95, 20 + Math.round((elapsed / 300000) * 75));
     onProgress?.("generating", pct);
-  }, 10000);
+  }, 1000);
 
   const controller = new AbortController();
   const timeoutId = setTimeout(() => controller.abort(), TIMEOUT_MS);
@@ -294,13 +288,12 @@ ${rawText}`;
       },
     ], controller.signal);
 
-    result.imageBase64 = input.imageBase64;
     await saveToCache(input.name, input.gender, rawText, result);
     onProgress?.("generating", 100);
     return result;
   } catch (e: any) {
     if (e.name === "AbortError") {
-      throw new Error("生成超时（20分钟），请稍后重试");
+      throw new Error("生成超时（10分钟），请稍后重试");
     }
     if (!navigator.onLine) {
       throw new Error("网络已断开，请检查网络连接后重试");
