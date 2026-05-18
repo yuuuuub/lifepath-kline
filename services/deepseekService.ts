@@ -436,7 +436,7 @@ export const organizeOcrSections = async (rawText: string, onProgress?: (pct: nu
       headers: reqHeaders,
       signal: controller.signal,
       body: JSON.stringify({
-        model: DEFAULT_MODEL,
+        model: "deepseek-v4-flash",
         temperature: 0.2,
         max_tokens: 16384,
         messages: [
