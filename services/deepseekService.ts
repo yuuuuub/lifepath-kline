@@ -480,9 +480,16 @@ ${rawText}
     }
     if (!content || typeof content !== "string") throw new Error("模型未返回有效内容");
 
-    const data = extractJson(content);
+    const data = extractJson(content) as Record<string, string>;
+    if (data["基础信息"]) {
+      data["基础信息"] = data["基础信息"]
+        .replace(/\b胎命身\b/g, '')
+        .replace(/\s+0\s+/g, ' ')
+        .replace(/\s+/g, ' ')
+        .trim();
+    }
     onProgress?.(100);
-    return data as Record<string, string>;
+    return data;
   } catch (e: any) {
     if (e.name === "AbortError") throw new Error("整理超时，请稍后重试");
     throw e;
