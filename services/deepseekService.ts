@@ -350,7 +350,7 @@ export const doOCR = async (imageBase64: string): Promise<string> => {
 
 export const organizeOcrSections = async (rawText: string): Promise<Record<string, string>> => {
   const controller = new AbortController();
-  const timeoutId = setTimeout(() => controller.abort(), 120000);
+  const timeoutId = setTimeout(() => controller.abort(), TIMEOUT_MS);
 
   try {
     const isProd = import.meta.env.PROD;
@@ -404,6 +404,9 @@ ${rawText}
 
     const data = extractJson(content);
     return data as Record<string, string>;
+  } catch (e: any) {
+    if (e.name === "AbortError") throw new Error("整理超时，请稍后重试");
+    throw e;
   } finally {
     clearTimeout(timeoutId);
   }
