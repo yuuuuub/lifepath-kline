@@ -19,7 +19,76 @@ const DIRECTION_CARDS: Array<{ type: DirectionType; desc: string }> = [
   { type: "family", desc: "家庭关系、子女缘分、贵人小人" },
 ];
 
-const SECTION_ORDER = ["基础信息", "四柱排盘", "神煞", "干支关系", "大运排盘", "岁运关系", "流年流月"];
+const SECTION_ORDER = ["基础信息", "四柱排盘", "原局神煞", "原局干支关系", "岁运干支关系", "大运排盘", "当前流年", "流月"];
+
+const renderMarkdownHTML = (md: string): string => {
+  const lines = md.split('\n');
+  const out: string[] = [];
+  let inTable = false;
+  let tableRows: string[][] = [];
+  let tableHeader = false;
+  let inList = false;
+
+  const flushTable = () => {
+    if (!inTable) return;
+    let html = '<table class="w-full text-xs border-collapse border border-gray-200"><tbody>';
+    for (let i = 0; i < tableRows.length; i++) {
+      const tag = i === 0 && tableHeader ? 'th' : 'td';
+      const cellClass = i === 0 && tableHeader ? 'bg-gray-100 font-medium' : '';
+      html += '<tr>';
+      for (const cell of tableRows[i]) {
+        html += `<${tag} class="border border-gray-200 px-2 py-1 ${cellClass}">${cell}</${tag}>`;
+      }
+      html += '</tr>';
+    }
+    html += '</tbody></table>';
+    out.push(html);
+    tableRows = [];
+    tableHeader = false;
+    inTable = false;
+  };
+
+  const flushList = () => {
+    if (inList) { out.push('</ul>'); inList = false; }
+  };
+
+  for (const line of lines) {
+    const trimmed = line.trim();
+    if (!trimmed) { flushList(); continue; }
+
+    // 表格行
+    if (trimmed.startsWith('|') && trimmed.endsWith('|')) {
+      flushList();
+      const cells = trimmed.slice(1, -1).split('|').map(c => c.trim());
+      if (cells.every(c => /^:?-{3,}:?$/.test(c))) {
+        tableHeader = true;
+        continue;
+      }
+      tableRows.push(cells);
+      inTable = true;
+      continue;
+    }
+
+    flushTable();
+
+    // 列表项
+    if (trimmed.startsWith('- ')) {
+      if (!inList) { out.push('<ul class="list-disc pl-4 space-y-0.5">'); inList = true; }
+      out.push(`<li>${trimmed.slice(2)}</li>`);
+      continue;
+    }
+
+    flushList();
+    out.push(`<p class="mb-1">${trimmed}</p>`);
+  }
+
+  flushTable();
+  flushList();
+
+  let html = out.join('\n');
+  html = html.replace(/\*\*(.+?)\*\*/g, '<strong>$1</strong>');
+  return html;
+};
 
 const AnalysisHub: React.FC<AnalysisHubProps> = ({ ocrContext, onReset }) => {
   const [orientation, setOrientation] = useState<"异性恋" | "同性恋" | "双性恋">("异性恋");
@@ -197,7 +266,7 @@ const AnalysisHub: React.FC<AnalysisHubProps> = ({ ocrContext, onReset }) => {
                 return (
                   <div key={section} className="border border-gray-100 rounded-lg overflow-hidden">
                     <div className="bg-gray-50 px-3 py-2 text-xs font-bold text-gray-600">{section}</div>
-                    <div className="p-3 text-xs text-gray-700 leading-relaxed whitespace-pre-wrap">{content}</div>
+                    <div className="p-3 text-xs text-gray-700 leading-relaxed" dangerouslySetInnerHTML={{ __html: renderMarkdownHTML(content) }} />
                   </div>
                 );
               })}
