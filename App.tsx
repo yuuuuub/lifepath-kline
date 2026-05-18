@@ -4,7 +4,7 @@ import LifeKLineChart, { groupByDaYun } from './components/LifeKLineChart';
 import AnalysisResult from './components/AnalysisResult';
 import BaziImageForm from './components/BaziImageForm';
 import { LifeDestinyResult } from './types';
-import { Sparkles, Download, Printer, Trophy, FileDown } from 'lucide-react';
+import { Sparkles, Printer, Trophy } from 'lucide-react';
 
 const App: React.FC = () => {
   const [result, setResult] = useState<LifeDestinyResult | null>(null);
@@ -15,174 +15,8 @@ const App: React.FC = () => {
     setUserName('');
   };
 
-  const handleExportJson = () => {
-    if (!result) return;
-
-    const exportData = {
-      bazi: result.analysis.bazi,
-      summary: result.analysis.summary,
-      summaryScore: result.analysis.summaryScore,
-      personality: result.analysis.personality,
-      personalityScore: result.analysis.personalityScore,
-      industry: result.analysis.industry,
-      industryScore: result.analysis.industryScore,
-      fengShui: result.analysis.fengShui,
-      fengShuiScore: result.analysis.fengShuiScore,
-      wealth: result.analysis.wealth,
-      wealthScore: result.analysis.wealthScore,
-      marriage: result.analysis.marriage,
-      marriageScore: result.analysis.marriageScore,
-      health: result.analysis.health,
-      healthScore: result.analysis.healthScore,
-      family: result.analysis.family,
-      familyScore: result.analysis.familyScore,
-      crypto: result.analysis.crypto,
-      cryptoScore: result.analysis.cryptoScore,
-      cryptoYear: result.analysis.cryptoYear,
-      cryptoStyle: result.analysis.cryptoStyle,
-      chartPoints: result.chartData,
-    };
-
-    const blob = new Blob([JSON.stringify(exportData, null, 2)], { type: 'application/json' });
-    const url = URL.createObjectURL(blob);
-    const a = document.createElement('a');
-    a.href = url;
-    a.download = `命理分析_${new Date().toISOString().slice(0, 10)}.json`;
-    document.body.appendChild(a);
-    a.click();
-    document.body.removeChild(a);
-    URL.revokeObjectURL(url);
-  };
-
   const handlePrint = () => {
     window.print();
-  };
-
-  const handleSaveHtml = () => {
-    if (!result) return;
-
-    const now = new Date();
-    const timeString = now.toLocaleString('zh-CN', {
-      year: 'numeric',
-      month: '2-digit',
-      day: '2-digit',
-      hour: '2-digit',
-      minute: '2-digit',
-      second: '2-digit',
-      hour12: false
-    });
-
-    const chartContainer = document.querySelector('.recharts-surface');
-    const chartSvg = chartContainer ? chartContainer.outerHTML : '<div style="padding:20px;text-align:center;">图表导出失败，请截图保存</div>';
-
-    const analysisContainer = document.getElementById('analysis-result-container');
-    const analysisHtml = analysisContainer ? analysisContainer.innerHTML : '';
-
-    const tableRows = result.chartData.map((item, index) => {
-      const endAge = isYearly
-        ? item.age
-        : (index < result.chartData.length - 1
-          ? result.chartData[index + 1].age - 1
-          : Math.max(item.age + 9, 99));
-      const scoreColor = item.close >= item.open ? 'text-green-600' : 'text-red-600';
-      const trendIcon = item.close >= item.open ? '▲' : '▼';
-      return `
-        <tr class="border-b border-gray-100 hover:bg-gray-50 transition-colors">
-          <td class="p-3 border-r border-gray-100 text-center font-mono">${isYearly ? item.age : item.age + '-' + endAge}岁</td>
-          <td class="p-3 border-r border-gray-100 text-center font-bold">${item.ganZhi}</td>
-          <td class="p-3 border-r border-gray-100 text-center text-sm">${item.daYun || '-'}</td>
-          <td class="p-3 border-r border-gray-100 text-center font-bold ${scoreColor}">
-            ${item.score} <span class="text-xs">${trendIcon}</span>
-          </td>
-          <td class="p-3 text-sm text-gray-700 text-justify leading-relaxed">${item.reason}</td>
-        </tr>
-      `;
-    }).join('');
-
-    const detailedTableHtml = `
-      <div class="mt-12 bg-white rounded-xl border border-gray-200 shadow-sm overflow-hidden">
-        <div class="p-6 border-b border-gray-100 bg-gray-50 flex items-center gap-2">
-           <div class="w-1 h-5 bg-indigo-600 rounded-full"></div>
-           <h3 class="text-xl font-bold text-gray-800 font-serif-sc">${isYearly ? '流年详批全表' : '大运详批全表'}</h3>
-           <span class="text-xs text-gray-500 ml-2">(${isYearly ? '由于离线网页无法交互，特此列出所有流年详情' : '由于离线网页无法交互，特此列出所有大运详情'})</span>
-        </div>
-        <div class="overflow-x-auto">
-          <table class="w-full text-left border-collapse">
-            <thead>
-              <tr class="bg-gray-100 text-gray-600 text-sm font-bold uppercase tracking-wider">
-                <th class="p-3 border-r border-gray-200 text-center w-24">年龄</th>
-                <th class="p-3 border-r border-gray-200 text-center w-28">${isYearly ? '流年干支' : '大运干支'}</th>
-                <th class="p-3 border-r border-gray-200 text-center w-28">${isYearly ? '大运' : '大运名称'}</th>
-                <th class="p-3 border-r border-gray-200 text-center w-20">评分</th>
-                <th class="p-3">${isYearly ? '流年批断' : '大运批断与建议'}</th>
-              </tr>
-            </thead>
-            <tbody>
-              ${tableRows}
-            </tbody>
-          </table>
-        </div>
-      </div>
-    `;
-
-    const fullHtml = `
-<!DOCTYPE html>
-<html lang="zh-CN">
-<head>
-  <meta charset="UTF-8">
-  <meta name="viewport" content="width=device-width, initial-scale=1.0">
-  <title>${userName || '用户'} - 命运K线命理报告</title>
-  <script src="https://cdn.tailwindcss.com"></script>
-  <style>
-    @import url('https://fonts.googleapis.com/css2?family=Noto+Serif+SC:wght@400;700&family=Inter:wght@400;600&display=swap');
-    body { font-family: 'Inter', sans-serif; background-color: #f8f9fa; }
-    .font-serif-sc { font-family: 'Noto Serif SC', serif; }
-    svg { width: 100% !important; height: auto !important; }
-  </style>
-</head>
-<body class="bg-gray-50 min-h-screen p-4 md:p-12">
-  <div class="max-w-6xl mx-auto space-y-10">
-    
-    <div class="text-center border-b border-gray-200 pb-8">
-      <h1 class="text-4xl font-bold font-serif-sc text-gray-900 mb-2">${userName ? userName + '的' : ''}命运K线命理报告</h1>
-      <p class="text-gray-500 text-sm">生成时间：${timeString}</p>
-    </div>
-
-    <div class="bg-white p-6 rounded-xl shadow-sm border border-gray-200">
-      <div class="flex items-center gap-2 mb-6">
-        <div class="w-1 h-6 bg-indigo-600 rounded-full"></div>
-        <h3 class="text-xl font-bold text-gray-800 font-serif-sc">流年大运走势图</h3>
-      </div>
-      <div class="w-full overflow-hidden flex justify-center py-4">
-        ${chartSvg}
-      </div>
-      <p class="text-center text-xs text-gray-400 mt-2">注：图表K线颜色根据运势涨跌绘制，数值越高代表运势越强。</p>
-    </div>
-
-    <div class="space-y-8">
-       ${analysisHtml}
-    </div>
-
-    ${detailedTableHtml}
-
-    <div class="text-center text-gray-400 text-sm py-12 border-t border-gray-200 mt-12">
-      <p>&copy; ${now.getFullYear()} 命运K线 | 仅供娱乐与文化研究，请勿迷信</p>
-    </div>
-
-  </div>
-</body>
-</html>
-    `;
-
-    const blob = new Blob([fullHtml], { type: 'text/html' });
-    const url = URL.createObjectURL(blob);
-    const a = document.createElement('a');
-    a.href = url;
-    a.download = `${userName || 'User'}_Life_Kline_Report_${now.getTime()}.html`;
-    document.body.appendChild(a);
-    a.click();
-    document.body.removeChild(a);
-    URL.revokeObjectURL(url);
   };
 
   const peakYearItem = useMemo(() => {
@@ -277,25 +111,11 @@ const App: React.FC = () => {
 
               <div className="flex flex-wrap gap-2 no-print">
                 <button
-                  onClick={handleExportJson}
-                  className="inline-flex items-center gap-1.5 px-3.5 py-2 bg-emerald-50 text-emerald-700 border border-emerald-200 rounded-lg hover:bg-emerald-100 transition-all text-sm font-medium disabled:opacity-40 disabled:cursor-not-allowed"
-                >
-                  <FileDown className="w-4 h-4" />
-                  导出JSON
-                </button>
-                <button
                   onClick={handlePrint}
                   className="inline-flex items-center gap-1.5 px-3.5 py-2 bg-indigo-50 text-indigo-700 border border-indigo-200 rounded-lg hover:bg-indigo-100 transition-all text-sm font-medium disabled:opacity-40 disabled:cursor-not-allowed"
                 >
                   <Printer className="w-4 h-4" />
                   保存PDF
-                </button>
-                <button
-                  onClick={handleSaveHtml}
-                  className="inline-flex items-center gap-1.5 px-3.5 py-2 bg-indigo-50 text-indigo-700 border border-indigo-200 rounded-lg hover:bg-indigo-100 transition-all text-sm font-medium disabled:opacity-40 disabled:cursor-not-allowed"
-                >
-                  <Download className="w-4 h-4" />
-                  保存网页
                 </button>
                 <button
                   onClick={() => { setResult(null); }}
