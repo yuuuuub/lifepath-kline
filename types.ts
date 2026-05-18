@@ -75,3 +75,22 @@ export interface LifeDestinyResult {
   analysis: AnalysisData;
   imageBase64?: string;
 }
+
+export type DirectionType = "kline" | "wealth" | "marriage" | "career" | "health" | "family";
+
+export interface OcrContext {
+  rawText: string;
+  imageBase64: string;
+  name: string;
+  gender: "男" | "女";
+  orientation?: "异性恋" | "同性恋" | "双性恋";
+  baziSections?: Record<string, string>;
+}
+
+export interface DirectionResult {
+  title: string;
+  content: string;
+  score: number;
+  highlights: string[];
+  timeline?: Array<{ year?: number; age?: number; label: string; desc: string }>;
+}

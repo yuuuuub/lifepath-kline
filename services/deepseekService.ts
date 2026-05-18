@@ -1,6 +1,6 @@
-import { LifeDestinyResult } from "../types";
+import { LifeDestinyResult, DirectionResult, DirectionType, OcrContext } from "../types";
 import { extractBaziFromImageBaidu, BaiduOcrConfig } from "./baiduOcrService";
-import { getFromCache, saveToCache } from "./cacheService";
+import { getFromCache, saveToCache, getDirectionCache, saveDirectionCache } from "./cacheService";
 
 const DEFAULT_MODEL = "deepseek-v4-pro";
 
@@ -336,6 +336,291 @@ export const generateByBaziImageDirect = async (input: BaziImageInput): Promise<
     if (isNetworkError(e)) {
       throw new Error("网络请求失败，请检查网络连接或稍后重试。部分浏览器可能需要关闭广告拦截或隐私模式。");
     }
+    throw e;
+  } finally {
+    clearTimeout(timeoutId);
+  }
+};
+
+export const doOCR = async (imageBase64: string): Promise<string> => {
+  const ocrConfig = getBaiduOcrConfig();
+  const { rawText } = await extractBaziFromImageBaidu(imageBase64, ocrConfig);
+  return rawText;
+};
+
+export const organizeOcrSections = async (rawText: string): Promise<Record<string, string>> => {
+  const controller = new AbortController();
+  const timeoutId = setTimeout(() => controller.abort(), 120000);
+
+  try {
+    const isProd = import.meta.env.PROD;
+    const apiKey = getDeepSeekApiKey();
+    const reqHeaders: Record<string, string> = { "Content-Type": "application/json" };
+    if (!isProd) reqHeaders["Authorization"] = `Bearer ${apiKey}`;
+
+    const response = await fetch(`${getBaseUrl()}/chat/completions`, {
+      method: "POST",
+      mode: "cors",
+      credentials: "omit",
+      headers: reqHeaders,
+      signal: controller.signal,
+      body: JSON.stringify({
+        model: DEFAULT_MODEL,
+        temperature: 0.2,
+        max_tokens: 4096,
+        messages: [
+          {
+            role: "system",
+            content: "你是八字排盘数据整理专家。收到 OCR 识别文本后，将其整理为标准七大板块格式。输出纯 JSON，禁止 markdown。",
+          },
+          {
+            role: "user",
+            content: `请将以下八字排盘 OCR 识别文本，按七大板块原样整理，不准改动任何干支与神煞信息：
+
+OCR 文本：
+${rawText}
+
+输出 JSON：
+{
+  "基础信息": "...",
+  "四柱排盘": "...",
+  "神煞": "...",
+  "干支关系": "...",
+  "大运排盘": "...",
+  "岁运关系": "...",
+  "流年流月": "..."
+}
+
+纯提取整理，不准做任何命理分析。`,
+          },
+        ],
+      }),
+    });
+
+    if (!response.ok) throw new Error(`整理请求失败（${response.status}）`);
+    const json = await response.json();
+    const content = json?.choices?.[0]?.message?.content;
+    if (!content || typeof content !== "string") throw new Error("模型未返回有效内容");
+
+    const data = extractJson(content);
+    return data as Record<string, string>;
+  } finally {
+    clearTimeout(timeoutId);
+  }
+};
+
+const DIRECTION_CONFIG: Record<DirectionType, { label: string; icon: string }> = {
+  kline: { label: "命运K线", icon: "📈" },
+  wealth: { label: "财富运势", icon: "💰" },
+  marriage: { label: "情感姻缘", icon: "💕" },
+  career: { label: "事业发展", icon: "💼" },
+  health: { label: "健康养生", icon: "🏥" },
+  family: { label: "六亲人际", icon: "👨‍👩‍👧‍👦" },
+};
+
+export const getDirectionLabel = (d: DirectionType) => DIRECTION_CONFIG[d].label;
+
+const buildDirectionPrompt = (ctx: OcrContext, direction: DirectionType): string => {
+  const orientationNote = direction === "marriage" && ctx.orientation === "同性恋"
+    ? "由于用户为同性恋取向，请按同性视角解读情感关系，正官/七杀对应同性伴侣，正财/偏财调整为同性缘分的辅助参考。"
+    : direction === "marriage" && ctx.orientation === "双性恋"
+    ? "由于用户为双性恋取向，请综合异性恋和同性恋双重视角解读情感关系，兼顾正官/七杀（异性）、正财/偏财（传统异性）、同性十神映射（同性伴侣）的多元解读。"
+    : "";
+
+  const prompts: Record<DirectionType, string> = {
+    kline: `请为用户生成完整的命理分析报告和命运K线数据。
+
+用户：${ctx.name} (${ctx.gender})
+
+== 分析字段 ==
+bazi（四柱数组）, summary（总评，180-250字）, summaryScore（0-10）, personality, industry, fengShui, wealth, marriage, health, family（各100-150字带score）, crypto, daYunReasons, baziSections（七大板块）
+
+== chartPoints ==
+- 共约100条，覆盖1-100岁每条流年
+- 每项：age, year, daYun, ganZhi, open, close, high, low, score（0-10）, reason（20-40字批断）
+- 起运前大运归为"童限"，让评分呈现明显波动
+
+只返回纯 JSON。`,
+
+    wealth: `你是专业命理分析大师。请基于以下八字信息，生成详尽的财富运势分析。
+
+${orientationNote}
+用户：${ctx.name} (${ctx.gender})
+
+请输出 JSON：
+{
+  "title": "财富运势",
+  "score": 0-10,
+  "content": "150-250字综合财富分析",
+  "highlights": ["3-5个关键发现点"],
+  "timeline": [
+    {"label": "少年", "desc": "少年时期财运简评"},
+    {"label": "青年", "desc": "青年时期财运简评"},
+    {"label": "中年", "desc": "中年时期财运简评"},
+    {"label": "老年", "desc": "老年时期财运简评"}
+  ]
+}
+
+timeline 按少年、青年、中年、老年四个阶段划分，共4条，desc 各80-120字。
+分析要点：命局财星旺衰、正财偏财、适合投资风格（保守/进取/指数基金/行业ETF/个股）、财运最佳年份、避坑建议。`,
+
+    marriage: `你是专业命理分析大师。请基于以下八字信息，生成详尽的情感姻缘分析。
+
+${orientationNote}
+用户：${ctx.name} (${ctx.gender})
+
+请输出 JSON：
+{
+  "title": "情感姻缘",
+  "score": 0-10,
+  "content": "150-250字综合情感分析",
+  "highlights": ["3-5个关键发现点"],
+  "timeline": [
+    {"label": "少年", "desc": "少年时期情感简评"},
+    {"label": "青年", "desc": "青年时期情感简评"},
+    {"label": "中年", "desc": "中年时期情感简评"},
+    {"label": "老年", "desc": "老年时期情感简评"}
+  ]
+}
+
+timeline 按少年、青年、中年、老年四个阶段划分，共4条，desc 各80-120字。
+分析要点：配偶宫和配偶星的旺衰、桃花运年份、正缘特征、婚姻注意事项、情感高峰期和低谷期。`,
+
+    career: `你是专业命理分析大师。请基于以下八字信息，生成详尽的事业发展分析。
+
+用户：${ctx.name} (${ctx.gender})
+
+请输出 JSON：
+{
+  "title": "事业发展",
+  "score": 0-10,
+  "content": "150-250字综合事业分析",
+  "highlights": ["3-5个关键发现点"],
+  "timeline": [
+    {"label": "少年", "desc": "少年时期事业简评"},
+    {"label": "青年", "desc": "青年时期事业简评"},
+    {"label": "中年", "desc": "中年时期事业简评"},
+    {"label": "老年", "desc": "老年时期事业简评"}
+  ]
+}
+
+timeline 按少年、青年、中年、老年四个阶段划分，共4条，desc 各80-120字。
+分析要点：官杀星旺衰、适合行业类型、贵人运、创业/打工建议、升迁关键年份、事业转型期。`,
+
+    health: `你是专业命理分析大师。请基于以下八字信息，生成详尽的健康养生分析。
+
+用户：${ctx.name} (${ctx.gender})
+
+请输出 JSON：
+{
+  "title": "健康养生",
+  "score": 0-10,
+  "content": "150-250字综合健康分析",
+  "highlights": ["3-5个关键发现点"],
+  "timeline": [
+    {"label": "少年", "desc": "少年时期健康简评"},
+    {"label": "青年", "desc": "青年时期健康简评"},
+    {"label": "中年", "desc": "中年时期健康简评"},
+    {"label": "老年", "desc": "老年时期健康简评"}
+  ]
+}
+
+timeline 按少年、青年、中年、老年四个阶段划分，共4条，desc 各80-120字。
+分析要点：五行偏颇导致的体质特征、易病脏腑、重点防护年龄段、养生建议（饮食/运动/作息）。`,
+
+    family: `你是专业命理分析大师。请基于以下八字信息，生成详尽的六亲人际分析。
+
+用户：${ctx.name} (${ctx.gender})
+
+请输出 JSON：
+{
+  "title": "六亲人际",
+  "score": 0-10,
+  "content": "150-250字综合人际分析",
+  "highlights": ["3-5个关键发现点"],
+  "timeline": [
+    {"label": "少年", "desc": "少年时期人际简评"},
+    {"label": "青年", "desc": "青年时期人际简评"},
+    {"label": "中年", "desc": "中年时期人际简评"},
+    {"label": "老年", "desc": "老年时期人际简评"}
+  ]
+}
+
+timeline 按少年、青年、中年、老年四个阶段划分，共4条，desc 各80-120字。
+分析要点：家庭关系、父母运势、子女缘分、社交圈特征、贵人/小人年份、人际关系高峰低谷期。`,
+  };
+
+  return prompts[direction];
+};
+
+export const generateDirectionAnalysis = async (
+  ctx: OcrContext,
+  direction: DirectionType,
+  onProgress?: (pct: number) => void,
+): Promise<DirectionResult | LifeDestinyResult> => {
+  if (direction === "kline") {
+    return generateByBaziImage(
+      { name: ctx.name, gender: ctx.gender, imageBase64: ctx.imageBase64, imageMimeType: "image/png" },
+      (stage, pct) => { if (typeof pct === "number") onProgress?.(pct); },
+    );
+  }
+
+  const cached = await getDirectionCache(ctx.name, ctx.gender, ctx.rawText, direction);
+  if (cached) { onProgress?.(100); return cached; }
+
+  onProgress?.(10);
+  const controller = new AbortController();
+  const timeoutId = setTimeout(() => controller.abort(), TIMEOUT_MS);
+
+  try {
+    const prompt = buildDirectionPrompt(ctx, direction);
+    const baziContext = `以下是从八字排盘截图中识别出的原始信息：
+
+${ctx.rawText}`;
+
+    const isProd = import.meta.env.PROD;
+    const apiKey = getDeepSeekApiKey();
+    const reqHeaders: Record<string, string> = { "Content-Type": "application/json" };
+    if (!isProd) reqHeaders["Authorization"] = `Bearer ${apiKey}`;
+
+    onProgress?.(30);
+    const response = await fetch(`${getBaseUrl()}/chat/completions`, {
+      method: "POST",
+      mode: "cors",
+      credentials: "omit",
+      headers: reqHeaders,
+      signal: controller.signal,
+      body: JSON.stringify({
+        model: DEFAULT_MODEL,
+        temperature: 0.5,
+        max_tokens: 8192,
+        messages: [
+          { role: "system", content: "你是专业命理分析大师。输出纯 JSON，禁止 markdown。" },
+          { role: "user", content: `${prompt}\n\n${baziContext}` },
+        ],
+      }),
+    });
+
+    onProgress?.(70);
+    if (!response.ok) throw new Error(`请求失败（${response.status}）`);
+    const json = await response.json();
+    const content = json?.choices?.[0]?.message?.content;
+    if (!content || typeof content !== "string") throw new Error("模型未返回有效内容");
+
+    const data = extractJson(content);
+    const result: DirectionResult = {
+      title: data.title || DIRECTION_CONFIG[direction].label,
+      content: data.content || "",
+      score: typeof data.score === "number" ? data.score : 5,
+      highlights: Array.isArray(data.highlights) ? data.highlights : [],
+      timeline: Array.isArray(data.timeline) ? data.timeline : undefined,
+    };
+
+    saveDirectionCache(ctx.name, ctx.gender, ctx.rawText, direction, result);
+    onProgress?.(100);
+    return result;
+  } catch (e: any) {
+    if (e.name === "AbortError") throw new Error("请求超时，请稍后重试");
     throw e;
   } finally {
     clearTimeout(timeoutId);

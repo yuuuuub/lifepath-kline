@@ -81,7 +81,19 @@ export async function onRequest(context) {
   if (request.method === 'POST') {
     try {
       const body = await request.json();
-      const { key, name, gender, rawText, result } = body;
+      const { key, name, gender, rawText, result, sections } = body;
+
+      if (sections && !result) {
+        // 仅保存七板块
+        if (!key || !sections) {
+          return new Response(JSON.stringify({ error: '缺少 key 或 sections' }), { status: 400, headers });
+        }
+        await env.DB.prepare(
+          'INSERT OR REPLACE INTO results (cache_key, name, gender, raw_text, result_json, bazi_sections, created_at) VALUES (?, ?, ?, ?, ?, ?, ?)'
+        ).bind(key, name || '', gender || '', rawText || '', '{}', JSON.stringify(sections), Date.now()).run();
+        return new Response(JSON.stringify({ ok: true }), { headers });
+      }
+
       if (!key || !result) {
         return new Response(JSON.stringify({ error: '缺少 key 或 result' }), { status: 400, headers });
       }

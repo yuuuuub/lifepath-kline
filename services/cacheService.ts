@@ -1,8 +1,9 @@
-import { LifeDestinyResult } from "../types";
+import { LifeDestinyResult, DirectionResult, DirectionType } from "../types";
 
 const DB_NAME = "lifepath-kline-cache";
-const DB_VERSION = 2;
+const DB_VERSION = 3;
 const STORE_NAME = "results";
+const DIRECTION_STORE = "directions";
 
 const API_BASE = import.meta.env.PROD ? "/api/results" : "";
 
@@ -13,6 +14,9 @@ function openDB(): Promise<IDBDatabase> {
       const db = request.result;
       if (!db.objectStoreNames.contains(STORE_NAME)) {
         db.createObjectStore(STORE_NAME);
+      }
+      if (!db.objectStoreNames.contains(DIRECTION_STORE)) {
+        db.createObjectStore(DIRECTION_STORE);
       }
     };
     request.onsuccess = () => resolve(request.result);
@@ -55,7 +59,7 @@ function extractBaziCore(rawText: string): string {
   return normalized;
 }
 
-async function makeCacheKey(name: string, gender: string, rawText: string): Promise<string> {
+export async function makeCacheKey(name: string, gender: string, rawText: string): Promise<string> {
   const baziCore = extractBaziCore(rawText);
   const data = `${name}|${gender}|${baziCore}`;
   const encoder = new TextEncoder();
@@ -75,6 +79,17 @@ async function fetchFromD1(key: string): Promise<LifeDestinyResult | null> {
   } catch {
     return null;
   }
+}
+
+export async function saveSectionsToD1(key: string, name: string, gender: string, rawText: string, sections: Record<string, string>): Promise<void> {
+  if (!API_BASE) return;
+  try {
+    fetch(`${API_BASE}`, {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ key, name, gender, rawText, sections }),
+    });
+  } catch {}
 }
 
 async function saveToD1(key: string, name: string, gender: string, rawText: string, result: LifeDestinyResult): Promise<void> {
@@ -136,6 +151,41 @@ export async function saveToCache(name: string, gender: string, rawText: string,
   const key = await makeCacheKey(name, gender, rawText);
   saveToIDB(key, result);
   saveToD1(key, name, gender, rawText, result);
+}
+
+async function makeDirectionKey(name: string, gender: string, rawText: string, direction: DirectionType): Promise<string> {
+  const base = await makeCacheKey(name, gender, rawText);
+  return `${base}:${direction}`;
+}
+
+export async function getDirectionCache(name: string, gender: string, rawText: string, direction: DirectionType): Promise<DirectionResult | null> {
+  const key = await makeDirectionKey(name, gender, rawText, direction);
+  try {
+    const db = await openDB();
+    return new Promise((resolve, reject) => {
+      const tx = db.transaction(DIRECTION_STORE, "readonly");
+      const store = tx.objectStore(DIRECTION_STORE);
+      const req = store.get(key);
+      req.onsuccess = () => { db.close(); resolve(req.result ?? null); };
+      req.onerror = () => { db.close(); reject(req.error); };
+    });
+  } catch {
+    return null;
+  }
+}
+
+export async function saveDirectionCache(name: string, gender: string, rawText: string, direction: DirectionType, result: DirectionResult): Promise<void> {
+  const key = await makeDirectionKey(name, gender, rawText, direction);
+  try {
+    const db = await openDB();
+    return new Promise((resolve, reject) => {
+      const tx = db.transaction(DIRECTION_STORE, "readwrite");
+      const store = tx.objectStore(DIRECTION_STORE);
+      store.put(result, key);
+      tx.oncomplete = () => { db.close(); resolve(); };
+      tx.onerror = () => { db.close(); reject(tx.error); };
+    });
+  } catch {}
 }
 
 export async function clearCache(): Promise<void> {

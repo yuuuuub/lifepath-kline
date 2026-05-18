@@ -1,11 +1,11 @@
 import React, { useState, useRef, useEffect } from "react";
 import { AlertCircle, Loader2, Sparkles, Upload } from "lucide-react";
-import { LifeDestinyResult } from "../types";
-import { generateByBaziImage, ProgressStage } from "../services/deepseekService";
-import GenerationProgress from "./GenerationProgress";
+import { OcrContext } from "../types";
+import { doOCR, organizeOcrSections } from "../services/deepseekService";
+import { saveSectionsToD1, makeCacheKey } from "../services/cacheService";
 
 interface BaziImageFormProps {
-  onSuccess: (result: LifeDestinyResult, userName: string) => void;
+  onSuccess: (ctx: OcrContext) => void;
 }
 
 const BaziImageForm: React.FC<BaziImageFormProps> = ({ onSuccess }) => {
@@ -13,8 +13,7 @@ const BaziImageForm: React.FC<BaziImageFormProps> = ({ onSuccess }) => {
   const [gender, setGender] = useState<"男" | "女">("男");
   const [file, setFile] = useState<File | null>(null);
   const [loading, setLoading] = useState(false);
-  const [progressStage, setProgressStage] = useState<ProgressStage | null>(null);
-  const [progress, setProgress] = useState(0);
+  const [loadingText, setLoadingText] = useState("");
   const [error, setError] = useState<string | null>(null);
   const mountedRef = useRef(true);
 
@@ -59,30 +58,25 @@ const BaziImageForm: React.FC<BaziImageFormProps> = ({ onSuccess }) => {
 
     try {
       setLoading(true);
-      setProgressStage(null);
-      setProgress(0);
+      setLoadingText("正在识别图片...");
       const imageBase64 = await toBase64(file);
-      const result = await generateByBaziImage(
-        {
-          name: name.trim(),
-          gender,
-          imageBase64,
-          imageMimeType: file.type,
-        },
-        (stage, pct) => {
-          setProgressStage(stage);
-          if (typeof pct === 'number') setProgress(pct);
-        }
-      );
-      onSuccess(result, name.trim());
+      const rawText = await doOCR(imageBase64);
+
+      setLoadingText("正在整理七大板块...");
+      const baziSections = await organizeOcrSections(rawText);
+
+      const key = await makeCacheKey(name.trim(), gender, rawText);
+      saveSectionsToD1(key, name.trim(), gender, rawText, baziSections);
+
+      if (mountedRef.current) {
+        onSuccess({ rawText, imageBase64, name: name.trim(), gender, baziSections });
+      }
     } catch (e) {
-      const msg = e instanceof Error ? e.message : "生成失败，请稍后重试";
+      const msg = e instanceof Error ? e.message : "识别失败，请稍后重试";
       setError(msg);
     } finally {
       if (mountedRef.current) {
         setLoading(false);
-        setProgressStage(null);
-        setProgress(0);
       }
     }
   };
@@ -150,18 +144,17 @@ const BaziImageForm: React.FC<BaziImageFormProps> = ({ onSuccess }) => {
           {loading ? (
             <>
               <Loader2 className="w-4 h-4 animate-spin" />
-              生成中...
+              {loadingText || "识别图片中..."}
             </>
           ) : (
             <>
               <Sparkles className="w-4 h-4" />
-              生成我的命运K线
+              上传并识别八字
             </>
           )}
         </button>
       </div>
 
-      <GenerationProgress stage={progressStage} progress={progress} visible={loading} />
     </div>
   );
 };
