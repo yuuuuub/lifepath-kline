@@ -200,7 +200,7 @@ crypto（投资理财建议，100-150字）, cryptoScore, cryptoYear（财运最
 - 每个板块完整保留对应信息，不省略不修改
 
 == chartPoints（流年K线）==
-- 共100条，覆盖1-100岁每条流年
+- 共约100条，覆盖1-100岁每条流年
 - 每项：age, year, daYun（所属大运名称）, ganZhi（流年干支）, open, close, high, low, score（0-10）, reason（20-40字批断）
 - 起运前大运归为"童限"
 - 让评分呈现明显波动，体现人生起伏，禁止平滑直线
