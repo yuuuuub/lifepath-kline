@@ -5,7 +5,7 @@ import { getFromCache, saveToCache, getDirectionCache, saveDirectionCache } from
 const DEFAULT_MODEL = "deepseek-v4-pro";
 
 const getBaseUrl = (): string => {
-  return import.meta.env.PROD ? "/api/deepseek" : "https://api.deepseek.com/v1";
+  return import.meta.env.PROD ? "/api/deepseek" : "https://api.deepseek.com/v1/chat/completions";
 };
 const MAX_TOKENS = 32768;
 const TIMEOUT_MS = 1200000;
@@ -125,7 +125,7 @@ const callDeepSeekAPI = async (
       const reqHeaders: Record<string, string> = { "Content-Type": "application/json" };
       if (!isProd) reqHeaders["Authorization"] = `Bearer ${apiKey}`;
 
-      const response = await fetch(`${getBaseUrl()}/chat/completions`, {
+      const response = await fetch(getBaseUrl(), {
         method: "POST",
         mode: "cors",
         credentials: "omit",
@@ -358,7 +358,7 @@ export const organizeOcrSections = async (rawText: string): Promise<Record<strin
     const reqHeaders: Record<string, string> = { "Content-Type": "application/json" };
     if (!isProd) reqHeaders["Authorization"] = `Bearer ${apiKey}`;
 
-    const response = await fetch(`${getBaseUrl()}/chat/completions`, {
+    const response = await fetch(getBaseUrl(), {
       method: "POST",
       mode: "cors",
       credentials: "omit",
@@ -584,7 +584,7 @@ ${ctx.rawText}`;
     if (!isProd) reqHeaders["Authorization"] = `Bearer ${apiKey}`;
 
     onProgress?.(30);
-    const response = await fetch(`${getBaseUrl()}/chat/completions`, {
+    const response = await fetch(getBaseUrl(), {
       method: "POST",
       mode: "cors",
       credentials: "omit",
