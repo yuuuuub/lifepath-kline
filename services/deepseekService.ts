@@ -348,9 +348,15 @@ export const doOCR = async (imageBase64: string): Promise<string> => {
   return rawText;
 };
 
-export const organizeOcrSections = async (rawText: string): Promise<Record<string, string>> => {
+export const organizeOcrSections = async (rawText: string, onProgress?: (pct: number) => void): Promise<Record<string, string>> => {
   const controller = new AbortController();
   const timeoutId = setTimeout(() => controller.abort(), TIMEOUT_MS);
+
+  const startTime = Date.now();
+  const timer = setInterval(() => {
+    const elapsed = Date.now() - startTime;
+    onProgress?.(Math.min(95, Math.round((elapsed / 300000) * 90)));
+  }, 5000);
 
   try {
     const isProd = import.meta.env.PROD;
@@ -403,11 +409,13 @@ ${rawText}
     if (!content || typeof content !== "string") throw new Error("模型未返回有效内容");
 
     const data = extractJson(content);
+    onProgress?.(100);
     return data as Record<string, string>;
   } catch (e: any) {
     if (e.name === "AbortError") throw new Error("整理超时，请稍后重试");
     throw e;
   } finally {
+    clearInterval(timer);
     clearTimeout(timeoutId);
   }
 };
@@ -575,6 +583,9 @@ export const generateDirectionAnalysis = async (
   const controller = new AbortController();
   const timeoutId = setTimeout(() => controller.abort(), TIMEOUT_MS);
 
+  const startTime = Date.now();
+  let timer: ReturnType<typeof setInterval> | null = null;
+
   try {
     const prompt = buildDirectionPrompt(ctx, direction);
     const baziContext = `以下是从八字排盘截图中识别出的原始信息：
@@ -587,6 +598,11 @@ ${ctx.rawText}`;
     if (!isProd) reqHeaders["Authorization"] = `Bearer ${apiKey}`;
 
     onProgress?.(30);
+    timer = setInterval(() => {
+      const elapsed = Date.now() - startTime;
+      onProgress?.(Math.min(90, 30 + Math.round((elapsed / 300000) * 60)));
+    }, 5000);
+
     const response = await fetch(getBaseUrl(), {
       method: "POST",
       mode: "cors",
@@ -604,6 +620,7 @@ ${ctx.rawText}`;
       }),
     });
 
+    clearInterval(timer);
     onProgress?.(70);
     if (!response.ok) throw new Error(`请求失败（${response.status}）`);
     const json = await response.json();
@@ -626,6 +643,7 @@ ${ctx.rawText}`;
     if (e.name === "AbortError") throw new Error("请求超时，请稍后重试");
     throw e;
   } finally {
+    if (timer) clearInterval(timer);
     clearTimeout(timeoutId);
   }
 };

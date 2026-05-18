@@ -14,6 +14,7 @@ const BaziImageForm: React.FC<BaziImageFormProps> = ({ onSuccess }) => {
   const [file, setFile] = useState<File | null>(null);
   const [loading, setLoading] = useState(false);
   const [loadingText, setLoadingText] = useState("");
+  const [progress, setProgress] = useState(0);
   const [error, setError] = useState<string | null>(null);
   const mountedRef = useRef(true);
 
@@ -63,7 +64,8 @@ const BaziImageForm: React.FC<BaziImageFormProps> = ({ onSuccess }) => {
       const rawText = await doOCR(imageBase64);
 
       setLoadingText("正在整理七大板块...");
-      const baziSections = await organizeOcrSections(rawText);
+      setProgress(0);
+      const baziSections = await organizeOcrSections(rawText, (pct) => setProgress(pct));
 
       const key = await makeCacheKey(name.trim(), gender, rawText);
       saveSectionsToD1(key, name.trim(), gender, rawText, baziSections);
@@ -77,6 +79,7 @@ const BaziImageForm: React.FC<BaziImageFormProps> = ({ onSuccess }) => {
     } finally {
       if (mountedRef.current) {
         setLoading(false);
+        setProgress(0);
       }
     }
   };
@@ -133,6 +136,15 @@ const BaziImageForm: React.FC<BaziImageFormProps> = ({ onSuccess }) => {
           <div className="flex items-center gap-2.5 text-red-600 bg-red-50 px-4 py-3 rounded-xl border border-red-100">
             <AlertCircle className="w-4 h-4 flex-shrink-0" />
             <p className="text-sm font-medium">{error}</p>
+          </div>
+        )}
+
+        {loading && progress > 0 && (
+          <div className="space-y-1">
+            <div className="w-full h-1.5 bg-gray-100 rounded-full overflow-hidden">
+              <div className="h-full bg-gradient-to-r from-indigo-500 to-purple-500 rounded-full transition-all duration-500" style={{ width: `${progress}%` }} />
+            </div>
+            <p className="text-xs text-gray-400 text-center">{progress}%</p>
           </div>
         )}
 
