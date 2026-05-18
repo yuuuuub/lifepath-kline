@@ -34,6 +34,11 @@ export async function onRequest(context) {
     `).run();
   } catch {}
 
+  // 兼容旧表：新增字段
+  for (const col of ['image_base64 TEXT', 'bazi_sections TEXT']) {
+    try { await env.DB.prepare(`ALTER TABLE results ADD COLUMN ${col}`).run(); } catch {}
+  }
+
   if (request.method === 'GET') {
     const url = new URL(request.url);
     const key = url.searchParams.get('key');

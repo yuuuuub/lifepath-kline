@@ -67,9 +67,11 @@ export interface AnalysisData {
   cryptoStyle: string;  // 适合风格 (指数基金/行业ETF/个股精选)
 
   daYunReasons: Record<string, string>; // { "大运名": "20-50字整体批断" }
+  baziSections: Record<string, string>; // { "基础信息": "...", "四柱排盘": "...", ... }
 }
 
 export interface LifeDestinyResult {
   chartData: KLinePoint[];
   analysis: AnalysisData;
+  imageBase64?: string;
 }

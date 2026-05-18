@@ -1,7 +1,7 @@
 import { LifeDestinyResult } from "../types";
 
 const DB_NAME = "lifepath-kline-cache";
-const DB_VERSION = 1;
+const DB_VERSION = 2;
 const STORE_NAME = "results";
 
 const API_BASE = import.meta.env.PROD ? "/api/results" : "";

@@ -23,7 +23,7 @@ const GenerationProgress: React.FC<GenerationProgressProps> = ({ stage, progress
 
   useEffect(() => {
     if (!visible) return;
-    const interval = setInterval(nextFact, 4000);
+    const interval = setInterval(nextFact, 10000);
     return () => clearInterval(interval);
   }, [visible, nextFact]);
 
