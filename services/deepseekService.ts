@@ -51,8 +51,8 @@ const parseSSEStream = async (
 
         try {
           const chunk = JSON.parse(data);
-          const delta = chunk.choices?.[0]?.delta?.content || '';
-          fullContent += delta;
+          const delta = chunk.choices?.[0]?.delta;
+          fullContent += delta?.content || delta?.reasoning_content || '';
           onToken?.(fullContent);
           if (chunk.usage) usage = chunk.usage;
         } catch {}
@@ -64,8 +64,8 @@ const parseSSEStream = async (
       if (data !== '[DONE]') {
         try {
           const chunk = JSON.parse(data);
-          const delta = chunk.choices?.[0]?.delta?.content || '';
-          fullContent += delta;
+          const delta = chunk.choices?.[0]?.delta;
+          fullContent += delta?.content || delta?.reasoning_content || '';
           onToken?.(fullContent);
           if (chunk.usage) usage = chunk.usage;
         } catch {}
@@ -438,7 +438,7 @@ export const organizeOcrSections = async (rawText: string, onProgress?: (pct: nu
       body: JSON.stringify({
         model: DEFAULT_MODEL,
         temperature: 0.2,
-        max_tokens: 4096,
+        max_tokens: 16384,
         messages: [
           {
             role: "system",
