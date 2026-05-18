@@ -82,7 +82,6 @@ export async function onRequest(context) {
     if (useStream) {
       responseHeaders.set('Content-Type', 'text/event-stream');
       responseHeaders.set('Cache-Control', 'no-cache');
-      responseHeaders.set('Connection', 'keep-alive');
 
       const upstreamReader = res.body.getReader();
       const encoder = new TextEncoder();

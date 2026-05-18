@@ -82,7 +82,6 @@ export async function onRequest(context) {
         ...respHeaders,
         'Content-Type': 'text/event-stream',
         'Cache-Control': 'no-cache',
-        'Connection': 'keep-alive',
       },
     });
   } catch (e) {
