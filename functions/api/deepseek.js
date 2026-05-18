@@ -29,9 +29,6 @@ export async function onRequest(context) {
   try {
     const body = await request.json();
 
-    body.stream = true;
-    body.stream_options = { include_usage: true };
-
     const deepseekRes = await fetch('https://api.deepseek.com/v1/chat/completions', {
       method: 'POST',
       headers: {
@@ -49,12 +46,9 @@ export async function onRequest(context) {
       });
     }
 
-    return new Response(deepseekRes.body, {
-      headers: {
-        ...respHeaders,
-        'Content-Type': 'text/event-stream',
-        'Cache-Control': 'no-cache',
-      },
+    const data = await deepseekRes.text();
+    return new Response(data, {
+      headers: { ...respHeaders, 'Content-Type': 'application/json' },
     });
   } catch (e) {
     return new Response(JSON.stringify({ error: `请求失败：${e.message}` }), {

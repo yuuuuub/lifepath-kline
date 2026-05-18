@@ -20,65 +20,6 @@ export interface BaziImageInput {
   imageMimeType: string;
 }
 
-const parseSSEStream = async (
-  response: Response,
-  signal?: AbortSignal,
-  onToken?: (accumulated: string) => void,
-): Promise<{ content: string; usage: any }> => {
-  const reader = response.body!.getReader();
-  const decoder = new TextDecoder();
-  let buffer = '';
-  let fullContent = '';
-  let usage: any = null;
-
-  try {
-    while (true) {
-      if (signal?.aborted) throw new DOMException('Aborted', 'AbortError');
-      const { done, value } = await reader.read();
-      if (done) break;
-
-      buffer += decoder.decode(value, { stream: true });
-      const lines = buffer.split('\n');
-      buffer = lines.pop() || '';
-
-      for (const line of lines) {
-        const trimmed = line.trim();
-        if (!trimmed || trimmed.startsWith(':')) continue;
-        if (!trimmed.startsWith('data: ')) continue;
-
-        const data = trimmed.slice(6).trim();
-        if (data === '[DONE]') continue;
-
-        try {
-          const chunk = JSON.parse(data);
-          const delta = chunk.choices?.[0]?.delta;
-          fullContent += delta?.content || delta?.reasoning_content || '';
-          onToken?.(fullContent);
-          if (chunk.usage) usage = chunk.usage;
-        } catch {}
-      }
-    }
-
-    if (buffer.trim().startsWith('data: ')) {
-      const data = buffer.trim().slice(6).trim();
-      if (data !== '[DONE]') {
-        try {
-          const chunk = JSON.parse(data);
-          const delta = chunk.choices?.[0]?.delta;
-          fullContent += delta?.content || delta?.reasoning_content || '';
-          onToken?.(fullContent);
-          if (chunk.usage) usage = chunk.usage;
-        } catch {}
-      }
-    }
-  } catch (e) {
-    reader.cancel();
-    throw e;
-  }
-
-  return { content: fullContent, usage };
-};
-
 const extractJson = (content: string): any => {
   let jsonContent = content.trim();
   const jsonMatch = jsonContent.match(/```(?:json)?\s*([\s\S]*?)```/);
@@ -203,14 +144,8 @@ const callDeepSeekAPI = async (
         throw new Error(`请求失败（${response.status}）：${text || "未知错误"}`);
       }
 
-      let content: string;
-      if (isProd) {
-        const result = await parseSSEStream(response, signal);
-        content = result.content;
-      } else {
-        const json = await response.json();
-        content = json?.choices?.[0]?.message?.content;
-      }
+      const json = await response.json();
+      const content = json?.choices?.[0]?.message?.content;
       if (!content || typeof content !== "string") {
         throw new Error("模型未返回有效内容");
       }
@@ -442,82 +377,32 @@ export const organizeOcrSections = async (rawText: string, onProgress?: (pct: nu
         messages: [
           {
             role: "system",
-            content: "你是八字排盘数据整理专家。收到 OCR 识别文本后，将其按指定格式整理。输出纯 JSON，JSON 各字段值内使用 Markdown 排版（表格、列表）。",
+            content: "你是八字排盘数据整理专家。直接输出纯 JSON，禁止输出任何模板、注释、解释文字或 markdown 代码块。各字段值用 Markdown 排版。",
           },
           {
             role: "user",
-            content: `请将以下八字排盘 OCR 识别文本，按八大板块整理，不准改动任何干支与神煞信息。过滤 OCR 噪声（如界面上的数字按钮、菜单项等，但保留日期数字）。
+            content: `从以下 OCR 文本提取八字排盘信息，输出为 8 个字段的 JSON。不准改动干支与神煞。过滤 OCR 噪声（界面按钮、菜单项），保留日期数字。
 
--- 输出格式规范（字段值内用 Markdown）--
-
-"基础信息"：用列表格式
-- 姓名（OCR 中名字后的数字忽略）
-- 性别及乾造/坤造
-- 农历日期
-- 阳历日期（05:35:14格式）
-- 起运信息
-- 交运信息
-- 当前大运（名称+年龄区间+年份区间）
-- 当前年龄
-- 司令
-
-"四柱排盘"：用表格，列：柱位|天干|地支|藏干|星运|自坐|空亡|纳音|主星
-- 藏干列格式：己（七杀）、癸（比肩）、辛（偏印）
-
-"原局神煞"：用列表格式
-- 年柱 XX：神煞列表
-- 月柱 XX：神煞列表
-- 日柱 XX：神煞列表
-- 时柱 XX：神煞列表
-
-"原局干支关系"：用列表格式
-- 天干关系
-- 地支关系
-- 整柱关系
-
-"岁运干支关系"：用列表格式
-- 岁运天干关系
-- 岁运地支关系
-- 岁运整柱关系
-
-"大运排盘"：用表格，列：大运|年龄|起止年份|天干地支|神煞
-- 年份用小运起始结束合并展示，如1997-2004
-
-"当前流年"：列出当前大运涵盖的所有流年干支，如"2024 甲辰、2025 乙巳、..."
-
-"流月"：用表格，列：节气|日期|干支
+字段及格式：
+1. 基础信息：列表，包含姓名、性别乾造/坤造、农历/阳历日期、起运、交运、当前大运、年龄、司令
+2. 四柱排盘：表格，列：柱位|天干|地支|藏干|星运|自坐|空亡|纳音|主星。藏干例：己（七杀）
+3. 原局神煞：列表，每条"年柱 XX：神煞"
+4. 原局干支关系：列表，天干/地支/整柱关系
+5. 岁运干支关系：列表，岁运天干/地支/整柱关系
+6. 大运排盘：表格，列：大运|年龄|起止年份|天干地支|神煞。年份合并如1997-2004
+7. 当前流年：当前大运内所有流年干支
+8. 流月：表格，列：节气|日期|干支
 
 OCR 文本：
-${rawText}
-
-输出 JSON：
-{
-  "基础信息": "...Markdown 列表...",
-  "四柱排盘": "...Markdown 表格...",
-  "原局神煞": "...Markdown 列表...",
-  "原局干支关系": "...Markdown 列表...",
-  "岁运干支关系": "...Markdown 列表...",
-  "大运排盘": "...Markdown 表格...",
-  "当前流年": "...纯文本...",
-  "流月": "...Markdown 表格..."
-}
-
-纯提取整理，不准做任何命理分析。`,
+${rawText}`,
           },
         ],
       }),
     });
 
     if (!response.ok) throw new Error(`整理请求失败（${response.status}）`);
-
-    let content: string;
-    if (isProd) {
-      const result = await parseSSEStream(response, controller.signal);
-      content = result.content;
-    } else {
-      const json = await response.json();
-      content = json?.choices?.[0]?.message?.content;
-    }
+    const json = await response.json();
+    const content = json?.choices?.[0]?.message?.content;
     if (!content || typeof content !== "string") throw new Error("模型未返回有效内容");
 
     const data = extractJson(content) as Record<string, string>;
@@ -738,14 +623,8 @@ ${ctx.rawText}`;
     clearInterval(timer);
     onProgress?.(70);
     if (!response.ok) throw new Error(`请求失败（${response.status}）`);
-    let content: string;
-    if (isProd) {
-      const result = await parseSSEStream(response, controller.signal);
-      content = result.content;
-    } else {
-      const json = await response.json();
-      content = json?.choices?.[0]?.message?.content;
-    }
+    const json = await response.json();
+    const content = json?.choices?.[0]?.message?.content;
     if (!content || typeof content !== "string") throw new Error("模型未返回有效内容");
 
     const data = extractJson(content);
