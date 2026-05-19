@@ -403,19 +403,20 @@ export const generateByBaziImageDirect = async (input: BaziImageInput): Promise<
 
 export const doOCR = async (imageBase64: string): Promise<string> => {
   const ocrConfig = getBaiduOcrConfig();
+  let lastError: any;
   for (let attempt = 0; attempt <= 2; attempt++) {
     try {
       const { rawText } = await extractBaziFromImageBaidu(imageBase64, ocrConfig);
       return rawText;
     } catch (e: any) {
-      if (attempt < 2 && (isNetworkError(e) || e.message?.includes("Connection closed"))) {
+      lastError = e;
+      if (attempt < 2) {
         await new Promise(r => setTimeout(r, 2000 * (attempt + 1)));
         continue;
       }
-      throw e;
     }
   }
-  throw new Error("OCR 识别失败");
+  throw lastError || new Error("OCR 识别失败");
 };
 
 export const organizeOcrSections = async (rawText: string, onProgress?: (pct: number) => void): Promise<Record<string, string>> => {

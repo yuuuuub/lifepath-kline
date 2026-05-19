@@ -22,24 +22,29 @@ const BaziImageForm: React.FC<BaziImageFormProps> = ({ onSuccess }) => {
     return () => { mountedRef.current = false; };
   }, []);
 
-  const toBase64 = (imgFile: File): Promise<string> =>
+  const compressImage = (imgFile: File, maxSize = 1200, quality = 0.7): Promise<string> =>
     new Promise((resolve, reject) => {
-      const reader = new FileReader();
-      reader.onload = () => {
-        const result = reader.result;
-        if (typeof result !== "string") {
-          reject(new Error("图片读取失败"));
-          return;
+      const img = new Image();
+      img.onload = () => {
+        let { width, height } = img;
+        if (width > maxSize || height > maxSize) {
+          const ratio = Math.min(maxSize / width, maxSize / height);
+          width = Math.round(width * ratio);
+          height = Math.round(height * ratio);
         }
-        const base64 = result.split(",")[1];
-        if (!base64) {
-          reject(new Error("图片数据为空"));
-          return;
-        }
+        const canvas = document.createElement("canvas");
+        canvas.width = width;
+        canvas.height = height;
+        const ctx = canvas.getContext("2d");
+        if (!ctx) { reject(new Error("图片压缩失败")); return; }
+        ctx.drawImage(img, 0, 0, width, height);
+        const dataUrl = canvas.toDataURL("image/jpeg", quality);
+        const base64 = dataUrl.split(",")[1];
+        if (!base64) { reject(new Error("图片压缩后数据为空")); return; }
         resolve(base64);
       };
-      reader.onerror = () => reject(new Error("图片读取失败"));
-      reader.readAsDataURL(imgFile);
+      img.onerror = () => reject(new Error("图片加载失败"));
+      img.src = URL.createObjectURL(imgFile);
     });
 
   const handleSubmit = async () => {
@@ -60,7 +65,7 @@ const BaziImageForm: React.FC<BaziImageFormProps> = ({ onSuccess }) => {
     try {
       setLoading(true);
       setLoadingText("正在识别图片...");
-      const imageBase64 = await toBase64(file);
+      const imageBase64 = await compressImage(file);
       const rawText = await doOCR(imageBase64);
 
       setLoadingText("正在整理七大板块...");
