@@ -109,61 +109,120 @@ const getDeepSeekApiKey = (): string => {
 
 const isNetworkError = (e: any): boolean => {
   return e.message === "Failed to fetch" || e.name === "TypeError" ||
-    e.message?.includes("网络连接") || e.message?.includes("网络请求失败");
+    e.message?.includes("网络连接") || e.message?.includes("网络请求失败") ||
+    e.message?.includes("Connection closed") || e.message?.includes("protocol error");
 };
 
-const callDeepSeekAPI = async (
-  messages: Array<{ role: string; content: string }>,
+const parseSSEStream = async (response: Response, signal?: AbortSignal): Promise<string> => {
+  const reader = response.body!.getReader();
+  const decoder = new TextDecoder();
+  let buffer = '';
+  let fullContent = '';
+
+  try {
+    while (true) {
+      if (signal?.aborted) throw new DOMException('Aborted', 'AbortError');
+      const { done, value } = await reader.read();
+      if (done) break;
+
+      buffer += decoder.decode(value, { stream: true });
+      const lines = buffer.split('\n');
+      buffer = lines.pop() || '';
+
+      for (const line of lines) {
+        const trimmed = line.trim();
+        if (!trimmed || trimmed.startsWith(':') || !trimmed.startsWith('data: ')) continue;
+        const data = trimmed.slice(6).trim();
+        if (data === '[DONE]') continue;
+        try {
+          const chunk = JSON.parse(data);
+          fullContent += chunk.choices?.[0]?.delta?.content || chunk.choices?.[0]?.delta?.reasoning_content || '';
+        } catch {}
+      }
+    }
+
+    if (buffer.trim().startsWith('data: ') && buffer.trim().slice(6).trim() !== '[DONE]') {
+      try {
+        const chunk = JSON.parse(buffer.trim().slice(6).trim());
+        fullContent += chunk.choices?.[0]?.delta?.content || chunk.choices?.[0]?.delta?.reasoning_content || '';
+      } catch {}
+    }
+  } catch (e) {
+    reader.cancel();
+    throw e;
+  }
+
+  return fullContent;
+};
+
+const fetchDeepSeekContent = async (
+  requestBody: Record<string, any>,
   signal: AbortSignal,
-): Promise<LifeDestinyResult> => {
+): Promise<string> => {
   const isProd = import.meta.env.PROD;
   const apiKey = getDeepSeekApiKey();
   if (!isProd && !apiKey) throw new Error("请先配置 VITE_DEEPSEEK_API_KEY");
 
-  for (let attempt = 0; attempt <= 2; attempt++) {
+  const reqHeaders: Record<string, string> = { "Content-Type": "application/json" };
+  if (!isProd) reqHeaders["Authorization"] = `Bearer ${apiKey}`;
+
+  const response = await fetch(getBaseUrl(), {
+    method: "POST",
+    mode: "cors",
+    credentials: "omit",
+    headers: reqHeaders,
+    signal,
+    body: JSON.stringify(requestBody),
+  });
+
+  if (!response.ok) {
+    const text = await response.text();
+    throw new Error(`请求失败（${response.status}）：${text || "未知错误"}`);
+  }
+
+  if (isProd) {
+    return parseSSEStream(response, signal);
+  }
+  const json = await response.json();
+  return json?.choices?.[0]?.message?.content || '';
+};
+
+const fetchDeepSeekContentWithRetry = async (
+  requestBody: Record<string, any>,
+  signal: AbortSignal,
+  maxRetries = 2,
+): Promise<string> => {
+  for (let attempt = 0; attempt <= maxRetries; attempt++) {
     try {
-      const reqHeaders: Record<string, string> = { "Content-Type": "application/json" };
-      if (!isProd) reqHeaders["Authorization"] = `Bearer ${apiKey}`;
-
-      const response = await fetch(getBaseUrl(), {
-        method: "POST",
-        mode: "cors",
-        credentials: "omit",
-        headers: reqHeaders,
-        signal,
-        body: JSON.stringify({
-          model: DEFAULT_MODEL,
-          temperature: 0.5,
-          max_tokens: MAX_TOKENS,
-          messages,
-        }),
-      });
-
-      if (!response.ok) {
-        const text = await response.text();
-        throw new Error(`请求失败（${response.status}）：${text || "未知错误"}`);
-      }
-
-      const json = await response.json();
-      const content = json?.choices?.[0]?.message?.content;
-      if (!content || typeof content !== "string") {
-        throw new Error("模型未返回有效内容");
-      }
-
-      const data = extractJson(content);
-      return {
-        chartData: data.chartPoints || [],
-        analysis: normalizeAnalysis(data),
-      };
+      return await fetchDeepSeekContent(requestBody, signal);
     } catch (e: any) {
-      if (attempt < 2 && isNetworkError(e)) {
+      if (attempt < maxRetries && (isNetworkError(e) || e.name === 'AbortError')) {
         await new Promise(r => setTimeout(r, 3000 * (attempt + 1)));
+        if (signal.aborted) throw e;
         continue;
       }
       throw e;
     }
   }
   throw new Error("请求失败");
+};
+
+const callDeepSeekAPI = async (
+  messages: Array<{ role: string; content: string }>,
+  signal: AbortSignal,
+): Promise<LifeDestinyResult> => {
+  const content = await fetchDeepSeekContentWithRetry({
+    model: DEFAULT_MODEL,
+    temperature: 0.5,
+    max_tokens: MAX_TOKENS,
+    messages,
+  }, signal);
+  if (!content) throw new Error("模型未返回有效内容");
+  const data = extractJson(content);
+  return {
+    chartData: data.chartPoints || [],
+    analysis: normalizeAnalysis(data),
+  };
 };
 
 const getBaiduOcrConfig = (): BaiduOcrConfig => {
@@ -370,29 +429,18 @@ export const organizeOcrSections = async (rawText: string, onProgress?: (pct: nu
   }, 5000);
 
   try {
-    const isProd = import.meta.env.PROD;
-    const apiKey = getDeepSeekApiKey();
-    const reqHeaders: Record<string, string> = { "Content-Type": "application/json" };
-    if (!isProd) reqHeaders["Authorization"] = `Bearer ${apiKey}`;
-
-    const response = await fetch(getBaseUrl(), {
-      method: "POST",
-      mode: "cors",
-      credentials: "omit",
-      headers: reqHeaders,
-      signal: controller.signal,
-      body: JSON.stringify({
-        model: "deepseek-v4-flash",
-        temperature: 0.2,
-        max_tokens: 16384,
-        messages: [
-          {
-            role: "system",
-            content: "你是八字排盘数据整理专家。直接输出纯 JSON，禁止输出任何模板、注释、解释文字或 markdown 代码块。各字段值用 Markdown 排版。",
-          },
-          {
-            role: "user",
-            content: `从以下 OCR 文本提取八字排盘信息，输出为 8 个字段的 JSON。不准改动干支与神煞。过滤 OCR 噪声（界面按钮、菜单项），保留日期数字。
+    const content = await fetchDeepSeekContentWithRetry({
+      model: "deepseek-v4-flash",
+      temperature: 0.2,
+      max_tokens: 16384,
+      messages: [
+        {
+          role: "system",
+          content: "你是八字排盘数据整理专家。直接输出纯 JSON，禁止输出任何模板、注释、解释文字或 markdown 代码块。各字段值用 Markdown 排版。",
+        },
+        {
+          role: "user",
+          content: `从以下 OCR 文本提取八字排盘信息，输出为 8 个字段的 JSON。不准改动干支与神煞。过滤 OCR 噪声（界面按钮、菜单项），保留日期数字。
 
 字段及格式：
 1. 基础信息：列表，包含姓名、性别乾造/坤造、农历/阳历日期、起运、交运、当前大运、年龄、司令
@@ -406,16 +454,11 @@ export const organizeOcrSections = async (rawText: string, onProgress?: (pct: nu
 
 OCR 文本：
 ${rawText}`,
-          },
-        ],
-      }),
-    });
+        },
+      ],
+    }, controller.signal);
 
-    if (!response.ok) throw new Error(`整理请求失败（${response.status}）`);
-    const json = await response.json();
-    const content = json?.choices?.[0]?.message?.content;
-    if (!content || typeof content !== "string") throw new Error("模型未返回有效内容");
-
+    if (!content) throw new Error("模型未返回有效内容");
     const data = extractJson(content) as Record<string, string>;
     onProgress?.(100);
     return data;
@@ -603,40 +646,25 @@ export const generateDirectionAnalysis = async (
 
 ${ctx.rawText}`;
 
-    const isProd = import.meta.env.PROD;
-    const apiKey = getDeepSeekApiKey();
-    const reqHeaders: Record<string, string> = { "Content-Type": "application/json" };
-    if (!isProd) reqHeaders["Authorization"] = `Bearer ${apiKey}`;
-
     onProgress?.(30);
     timer = setInterval(() => {
       const elapsed = Date.now() - startTime;
       onProgress?.(Math.min(90, 30 + Math.round((elapsed / 300000) * 60)));
     }, 5000);
 
-    const response = await fetch(getBaseUrl(), {
-      method: "POST",
-      mode: "cors",
-      credentials: "omit",
-      headers: reqHeaders,
-      signal: controller.signal,
-      body: JSON.stringify({
-        model: DEFAULT_MODEL,
-        temperature: 0.5,
-        max_tokens: 8192,
-        messages: [
-          { role: "system", content: "你是专业命理分析大师。输出纯 JSON，禁止 markdown。" },
-          { role: "user", content: `${prompt}\n\n${baziContext}` },
-        ],
-      }),
-    });
+    const content = await fetchDeepSeekContentWithRetry({
+      model: DEFAULT_MODEL,
+      temperature: 0.5,
+      max_tokens: 8192,
+      messages: [
+        { role: "system", content: "你是专业命理分析大师。输出纯 JSON，禁止 markdown。" },
+        { role: "user", content: `${prompt}\n\n${baziContext}` },
+      ],
+    }, controller.signal);
 
     clearInterval(timer);
     onProgress?.(70);
-    if (!response.ok) throw new Error(`请求失败（${response.status}）`);
-    const json = await response.json();
-    const content = json?.choices?.[0]?.message?.content;
-    if (!content || typeof content !== "string") throw new Error("模型未返回有效内容");
+    if (!content) throw new Error("模型未返回有效内容");
 
     const data = extractJson(content);
     const result: DirectionResult = {
