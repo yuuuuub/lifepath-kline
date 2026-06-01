@@ -2,6 +2,18 @@ export async function onRequest(context) {
   const { request, params, env } = context;
   const url = new URL(request.url);
 
+  // Handle CORS preflight
+  if (request.method === 'OPTIONS') {
+    return new Response(null, {
+      headers: {
+        'Access-Control-Allow-Origin': '*',
+        'Access-Control-Allow-Methods': 'GET, POST, OPTIONS',
+        'Access-Control-Allow-Headers': 'Content-Type, Authorization',
+        'Access-Control-Max-Age': '86400',
+      },
+    });
+  }
+
   const segments = params.path || [];
   if (segments.length < 2) {
     return new Response(JSON.stringify({ error: 'Invalid proxy path' }), {

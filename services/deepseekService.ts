@@ -1,11 +1,11 @@
-import { LifeDestinyResult, DirectionResult, DirectionType, OcrContext } from "../types";
+import { LifeDestinyResult, DirectionResult, DirectionType, OcrContext, ParsedBaziOcr } from "../types";
 import { extractBaziFromImageBaidu, BaiduOcrConfig } from "./baiduOcrService";
 import { getFromCache, saveToCache, getDirectionCache, saveDirectionCache } from "./cacheService";
 
 const DEFAULT_MODEL = "deepseek-v4-pro";
 
 const getBaseUrl = (): string => {
-  return import.meta.env.PROD ? "/api/deepseek" : "https://api.deepseek.com/v1/chat/completions";
+  return import.meta.env.PROD ? "/api/deepseek" : "/api/deepseek";
 };
 const MAX_TOKENS = 32768;
 const TIMEOUT_MS = 1200000;
@@ -103,9 +103,7 @@ const normalizeAnalysis = (data: any): LifeDestinyResult["analysis"] => ({
   baziSections: typeof data.baziSections === 'object' && data.baziSections !== null ? data.baziSections : {},
 });
 
-const getDeepSeekApiKey = (): string => {
-  return (import.meta.env.VITE_DEEPSEEK_API_KEY || "").trim();
-};
+
 
 const isNetworkError = (e: any): boolean => {
   return e.message === "Failed to fetch" || e.name === "TypeError" ||
@@ -160,16 +158,15 @@ const fetchDeepSeekContent = async (
   signal: AbortSignal,
 ): Promise<string> => {
   const isProd = import.meta.env.PROD;
-  const apiKey = getDeepSeekApiKey();
-  if (!isProd && !apiKey) throw new Error("请先配置 VITE_DEEPSEEK_API_KEY");
+  const url = `${getBaseUrl()}/chat/completions`;
 
   const reqHeaders: Record<string, string> = { "Content-Type": "application/json" };
-  if (!isProd) reqHeaders["Authorization"] = `Bearer ${apiKey}`;
+  // In dev mode, Vite proxy injects Authorization header
+  // In prod mode, Cloudflare Functions inject Authorization header
+  // So we don't need to set it here in either case
 
-  const response = await fetch(getBaseUrl(), {
+  const response = await fetch(url, {
     method: "POST",
-    mode: "cors",
-    credentials: "omit",
     headers: reqHeaders,
     signal,
     body: JSON.stringify(requestBody),
@@ -196,7 +193,9 @@ const fetchDeepSeekContentWithRetry = async (
     try {
       return await fetchDeepSeekContent(requestBody, signal);
     } catch (e: any) {
-      if (attempt < maxRetries && (isNetworkError(e) || e.name === 'AbortError')) {
+      // Don't retry on AbortError (timeout) - the signal is already aborted
+      if (e.name === 'AbortError') throw e;
+      if (attempt < maxRetries && isNetworkError(e)) {
         await new Promise(r => setTimeout(r, 3000 * (attempt + 1)));
         if (signal.aborted) throw e;
         continue;
@@ -210,11 +209,12 @@ const fetchDeepSeekContentWithRetry = async (
 const callDeepSeekAPI = async (
   messages: Array<{ role: string; content: string }>,
   signal: AbortSignal,
+  options?: { model?: string; maxTokens?: number; temperature?: number },
 ): Promise<LifeDestinyResult> => {
   const content = await fetchDeepSeekContentWithRetry({
-    model: DEFAULT_MODEL,
-    temperature: 0.5,
-    max_tokens: MAX_TOKENS,
+    model: options?.model || DEFAULT_MODEL,
+    temperature: options?.temperature ?? 0.5,
+    max_tokens: options?.maxTokens || MAX_TOKENS,
     messages,
   }, signal);
   if (!content) throw new Error("模型未返回有效内容");
@@ -229,8 +229,187 @@ const getBaiduOcrConfig = (): BaiduOcrConfig => {
   return {
     apiKey: (import.meta.env.VITE_BAIDU_OCR_API_KEY || "").trim(),
     secretKey: (import.meta.env.VITE_BAIDU_OCR_SECRET_KEY || "").trim(),
-    proxyUrl: import.meta.env.PROD ? "/api/baidu-ocr" : undefined,
+    // Always use proxy to avoid CORS issues (both dev and prod)
+    proxyUrl: "/api/baidu-ocr",
   };
+};
+
+const GANZHI_RE = /[甲乙丙丁戊己庚辛壬癸][子丑寅卯辰巳午未申酉戌亥]/;
+
+const splitCleanLines = (rawText: string): string[] =>
+  rawText
+    .split(/\r?\n/)
+    .map(line => line.trim())
+    .filter(Boolean);
+
+const findAfterLabel = (lines: string[], label: string): string | undefined => {
+  const index = lines.findIndex(line => line === label || line.startsWith(`${label}：`) || line.startsWith(`${label}:`));
+  if (index === -1) return undefined;
+  const sameLine = lines[index].match(new RegExp(`^${label}[：:](.+)$`))?.[1]?.trim();
+  if (sameLine) return sameLine;
+  return lines.slice(index + 1).find(line => line && !["年柱", "月柱", "日柱", "时柱"].includes(line));
+};
+
+const collectRelation = (rawText: string, label: string): string[] => {
+  const escaped = label.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
+  const match = rawText.match(new RegExp(`${escaped}[：:]([^\\n]+)`));
+  if (!match?.[1]) return [];
+  return match[1]
+    .split(/[1,，、；;|\s]+/)
+    .map(item => item.trim())
+    .filter(item => item && item !== "无");
+};
+
+const extractPillars = (lines: string[]): ParsedBaziOcr["pillars"] => {
+  const stemRowIndex = lines.findIndex(line => line === "天干");
+  const branchRowIndex = lines.findIndex(line => line === "地支");
+  const hiddenStemIndex = lines.findIndex(line => line === "藏干");
+
+  if (stemRowIndex !== -1 && branchRowIndex !== -1 && branchRowIndex > stemRowIndex) {
+    const stems = lines
+      .slice(stemRowIndex + 1, branchRowIndex)
+      .filter(line => /^[甲乙丙丁戊己庚辛壬癸]$/.test(line));
+    const branches = lines
+      .slice(branchRowIndex + 1, hiddenStemIndex === -1 ? branchRowIndex + 16 : hiddenStemIndex)
+      .filter(line => /^[子丑寅卯辰巳午未申酉戌亥]$/.test(line));
+    const pairs = stems.map((stem, index) => `${stem}${branches[index] || ""}`).filter(pillar => GANZHI_RE.test(pillar));
+
+    if (pairs.length >= 6) {
+      return {
+        year: pairs[2],
+        month: pairs[3],
+        day: pairs[4],
+        hour: pairs[5],
+      };
+    }
+
+    if (pairs.length >= 4) {
+      return {
+        year: pairs[0],
+        month: pairs[1],
+        day: pairs[2],
+        hour: pairs[3],
+      };
+    }
+  }
+
+  const pillarLabelIndex = lines.findIndex((line, index) =>
+    line === "年柱" &&
+    lines[index + 1] === "月柱" &&
+    lines[index + 2] === "日柱" &&
+    lines[index + 3] === "时柱"
+  );
+
+  const dayMarkerIndex = lines.findIndex(line => line === "元男" || line === "元女" || line === "日元");
+  if (dayMarkerIndex >= 2 && GANZHI_RE.test(lines[dayMarkerIndex - 2]) && GANZHI_RE.test(lines[dayMarkerIndex - 1])) {
+    return {
+      year: lines[dayMarkerIndex - 2],
+      month: lines[dayMarkerIndex - 1],
+      day: lines[dayMarkerIndex + 1],
+      hour: lines[dayMarkerIndex + 2],
+    };
+  }
+
+  if (pillarLabelIndex !== -1) {
+    const candidates = lines
+      .slice(pillarLabelIndex + 4, pillarLabelIndex + 30)
+      .filter(line => GANZHI_RE.test(line));
+    if (candidates.length >= 4) {
+      return {
+        year: candidates[0],
+        month: candidates[1],
+        day: candidates[2],
+        hour: candidates[3],
+      };
+    }
+  }
+
+  const allGanZhi = lines.filter(line => GANZHI_RE.test(line));
+  return {
+    year: allGanZhi[0],
+    month: allGanZhi[1],
+    day: allGanZhi[2],
+    hour: allGanZhi[3],
+  };
+};
+
+const extractDaYun = (lines: string[]): ParsedBaziOcr["daYun"] => {
+  const startIndex = lines.findIndex(line => line === "大运");
+  if (startIndex === -1) return [];
+
+  const window = lines.slice(startIndex + 1, startIndex + 90);
+  const years = window.filter(line => /^(19|20)\d{2}$/.test(line)).slice(0, 10);
+  const ages = window.filter(line => /^\d+\s*岁$/.test(line)).slice(0, 10);
+  let pillars = window.filter(line => GANZHI_RE.test(line) && line.length <= 8).slice(0, 10);
+
+  if (pillars.length < 4) {
+    const stems = window.filter(line => /^[甲乙丙丁戊己庚辛壬癸]/.test(line) && !GANZHI_RE.test(line)).slice(0, 10);
+    const branches = window.filter(line => /^[子丑寅卯辰巳午未申酉戌亥]/.test(line) && !GANZHI_RE.test(line)).slice(0, 10);
+    if (stems.length >= 4 && branches.length >= 4) {
+      pillars = stems.map((stem, index) => `${stem[0]}${branches[index]?.[0] || ""}`).filter(pillar => pillar.length === 2);
+    }
+  }
+
+  return pillars.map((pillar, index) => ({
+    startYear: years[index],
+    endYear: years[index + 1],
+    age: ages[index],
+    pillar,
+  }));
+};
+
+export const parseBaziOcr = (rawText: string, fallbackName: string, fallbackGender: "男" | "女"): ParsedBaziOcr => {
+  const lines = splitCleanLines(rawText);
+  const lunarLine = lines.find(line => line.includes("农历"));
+  const solarLine = lines.find(line => line.includes("阳历") || line.includes("公历"));
+  const ageLine = lines.find(line => /^\d+\s*岁$/.test(line));
+  const nameLine = lines.find((line, index) => line === fallbackName || (index > 0 && lines[index - 1]?.includes("断事笔记") && line.length <= 8));
+
+  const keyShenSha = Array.from(new Set(lines.filter(line =>
+    /(天乙贵人|太极贵人|文昌贵人|福星贵人|德秀贵人|桃花|驿马|华盖|将星|金舆|红艳煞|空亡|羊刃|禄神)/.test(line)
+  ))).slice(0, 30);
+
+  return {
+    name: nameLine || fallbackName,
+    gender: rawText.includes("坤造") ? "女" : rawText.includes("乾造") ? "男" : fallbackGender,
+    calendar: {
+      lunar: lunarLine?.replace(/^农历[：:]?/, "").trim(),
+      solar: solarLine?.replace(/^(阳历|公历)[：:]?/, "").trim(),
+    },
+    pillars: extractPillars(lines),
+    startLuck: lines.find(line => line.startsWith("起运")),
+    transferLuck: lines.find(line => line.startsWith("交运")),
+    commander: findAfterLabel(lines, "司令"),
+    currentAge: ageLine,
+    daYun: extractDaYun(lines),
+    relations: {
+      originalHeavenly: collectRelation(rawText, "原局天干"),
+      originalEarthly: collectRelation(rawText, "原局地支"),
+      originalPillar: collectRelation(rawText, "原局整柱"),
+      luckHeavenly: collectRelation(rawText, "岁运天干"),
+      luckEarthly: collectRelation(rawText, "岁运地支"),
+      luckPillar: collectRelation(rawText, "岁运整柱"),
+    },
+    keyShenSha,
+    rawPreview: lines.slice(0, 80).join("\n"),
+  };
+};
+
+const buildStructuredBaziContext = (ctx: OcrContext): string => {
+  const parsed = ctx.parsed || parseBaziOcr(ctx.rawText, ctx.name, ctx.gender);
+  const hasPillars = Object.values(parsed.pillars).filter(Boolean).length >= 4;
+  const payload = {
+    name: ctx.name,
+    gender: ctx.gender,
+    parsed,
+    baziSections: ctx.baziSections,
+  };
+
+  return `以下排盘数据已由系统从 OCR 本地结构化提取。请直接基于 JSON 分析，不要重新整理 OCR，不要复述原始排盘。
+
+结构化排盘 JSON：
+${JSON.stringify(payload, null, 2)}
+${hasPillars ? "" : `\n\n解析兜底 OCR 片段：\n${parsed.rawPreview}`}`;
 };
 
 const buildFullPrompt = (name: string, gender: string): string => {
@@ -329,19 +508,20 @@ export const generateByBaziImage = async (
   const timeoutId = setTimeout(() => controller.abort(), TIMEOUT_MS);
 
   try {
-    const baziContext = `以下是从八字排盘截图中识别出的原始 OCR 文本。
-
-请你先按以下要求整理识别结果，再做命理分析：
-
-完整识别整张八字排盘图片所有内容，原样提取所有文字与干支信息，不准改动任何数据，按照【基础信息、四柱排盘、神煞、干支关系、大运排盘、岁运关系、流年流月】七大固定板块整理成文，沿用标准八字整理格式输出，纯提取无命理分析。
-
-原始 OCR 文本：
-${rawText}`;
+    const baziSections = buildLocalOcrSections(rawText);
+    const baziContext = buildStructuredBaziContext({
+      rawText,
+      imageBase64: input.imageBase64,
+      name: input.name,
+      gender: input.gender,
+      baziSections,
+      parsed: parseBaziOcr(rawText, input.name, input.gender),
+    });
 
     const result = await callDeepSeekAPI([
       {
         role: "system",
-        content: "你是专业命理分析大师。收到 OCR 文本后，先按七大板块（基础信息、四柱排盘、神煞、干支关系、大运排盘、岁运关系、流年流月）原样整理数据，不准改动任何干支与神煞信息；整理完毕后再基于原文数据生成命理分析 JSON。输出完整严格 JSON，禁止 markdown。分析要详尽具体，流年批断要贴合命理。",
+        content: "你是专业命理分析大师。基于结构化排盘 JSON 生成命理分析 JSON。输出完整严格 JSON，禁止 markdown。分析要详尽具体，流年批断要贴合命理。",
       },
       {
         role: "user",
@@ -366,6 +546,143 @@ ${rawText}`;
     throw e;
   } finally {
     clearInterval(timer);
+    clearTimeout(timeoutId);
+  }
+};
+
+export const generateKlineFromOcr = async (
+  ctx: OcrContext,
+  onProgress?: (pct: number) => void,
+): Promise<LifeDestinyResult> => {
+  const cached = await getFromCache(ctx.name, ctx.gender, ctx.rawText);
+  if (cached) {
+    onProgress?.(100);
+    return cached;
+  }
+
+  const controller = new AbortController();
+  const timeoutId = setTimeout(() => controller.abort(), TIMEOUT_MS);
+  const startTime = Date.now();
+  const timer = setInterval(() => {
+    const elapsed = Date.now() - startTime;
+    onProgress?.(Math.min(95, 15 + Math.round((elapsed / 1200000) * 80)));
+  }, 10000);
+
+  try {
+    onProgress?.(15);
+    const baziContext = buildStructuredBaziContext(ctx);
+
+    const result = await callDeepSeekAPI([
+      {
+        role: "system",
+        content: "你是专业命理分析大师。基于结构化排盘 JSON 生成完整严格 JSON，禁止 markdown。分析要详尽具体，流年批断要贴合命理。",
+      },
+      {
+        role: "user",
+        content: `${buildFullPrompt(ctx.name, ctx.gender)}\n\n${baziContext}`,
+      },
+    ], controller.signal);
+
+    result.imageBase64 = ctx.imageBase64;
+    result.analysis.baziSections = ctx.baziSections || result.analysis.baziSections;
+    await saveToCache(ctx.name, ctx.gender, ctx.rawText, result);
+    onProgress?.(100);
+    return result;
+  } catch (e: any) {
+    if (e.name === "AbortError") {
+      throw new Error("生成超时（20分钟），请稍后重试");
+    }
+    if (!navigator.onLine) {
+      throw new Error("网络已断开，请检查网络连接后重试");
+    }
+    if (isNetworkError(e)) {
+      throw new Error("网络请求失败，请检查网络连接或稍后重试。部分浏览器可能需要关闭广告拦截或隐私模式。");
+    }
+    throw e;
+  } finally {
+    clearInterval(timer);
+    clearTimeout(timeoutId);
+  }
+};
+
+const buildOverviewPrompt = (name: string, gender: string): string => {
+  return `请为用户生成命理总览报告，先不要生成K线图数据。
+
+用户：${name} (${gender})
+
+只输出纯 JSON，字段如下：
+{
+  "bazi": ["年柱", "月柱", "日柱", "时柱"],
+  "summary": "总评，180-250字",
+  "summaryScore": 0-10,
+  "personality": "性格分析，100-150字",
+  "personalityScore": 0-10,
+  "industry": "事业分析，100-150字",
+  "industryScore": 0-10,
+  "fengShui": "风水建议，100-150字",
+  "fengShuiScore": 0-10,
+  "wealth": "财富分析，100-150字",
+  "wealthScore": 0-10,
+  "marriage": "婚姻分析，100-150字",
+  "marriageScore": 0-10,
+  "health": "健康分析，80-120字",
+  "healthScore": 0-10,
+  "family": "六亲分析，80-120字",
+  "familyScore": 0-10,
+  "crypto": "投资理财建议，100-150字",
+  "cryptoScore": 0-10,
+  "cryptoYear": "财运最佳年份",
+  "cryptoStyle": "指数基金定投/行业ETF/个股精选",
+  "daYunReasons": {}
+}
+
+不要输出 chartPoints，不要输出 markdown。`;
+};
+
+export const generateKlineOverviewFromOcr = async (
+  ctx: OcrContext,
+  onProgress?: (pct: number) => void,
+): Promise<LifeDestinyResult> => {
+  const cached = await getFromCache(ctx.name, ctx.gender, ctx.rawText);
+  if (cached) {
+    onProgress?.(100);
+    return cached;
+  }
+
+  const controller = new AbortController();
+  const timeoutId = setTimeout(() => controller.abort(), TIMEOUT_MS);
+
+  try {
+    onProgress?.(20);
+    const baziContext = buildStructuredBaziContext(ctx);
+
+    const result = await callDeepSeekAPI([
+      {
+        role: "system",
+        content: "你是专业命理分析大师。基于结构化排盘 JSON 先生成总览 JSON，禁止 markdown，禁止生成 chartPoints。",
+      },
+      {
+        role: "user",
+        content: `${buildOverviewPrompt(ctx.name, ctx.gender)}\n\n${baziContext}`,
+      },
+    ], controller.signal, { maxTokens: 8192, temperature: 0.5 });
+
+    result.imageBase64 = ctx.imageBase64;
+    result.analysis.baziSections = ctx.baziSections || result.analysis.baziSections;
+    onProgress?.(100);
+    return result;
+  } catch (e: any) {
+    if (e.name === "AbortError") {
+      throw new Error("总览生成超时，请稍后重试");
+    }
+    if (!navigator.onLine) {
+      throw new Error("网络已断开，请检查网络连接后重试");
+    }
+    if (isNetworkError(e)) {
+      throw new Error("网络请求失败，请检查网络连接或稍后重试。部分浏览器可能需要关闭广告拦截或隐私模式。");
+    }
+    throw e;
+  } finally {
     clearTimeout(timeoutId);
   }
 };
@@ -419,6 +736,41 @@ export const doOCR = async (imageBase64: string): Promise<string> => {
   throw lastError || new Error("OCR 识别失败");
 };
 
+export const buildLocalOcrSections = (rawText: string): Record<string, string> => {
+  const lines = rawText
+    .split(/\r?\n/)
+    .map(line => line.trim())
+    .filter(Boolean);
+
+  if (lines.length === 0) return {};
+
+  const sectionMatchers: Array<[string, RegExp]> = [
+    ["基础信息", /(姓名|乾造|坤造|公历|阳历|农历|出生|起运|交运|年龄|司令)/],
+    ["四柱排盘", /(年柱|月柱|日柱|时柱|天干|地支|藏干|主星|副星|空亡|纳音|星运|自坐)/],
+    ["原局神煞", /(神煞|桃花|驿马|华盖|天乙|太极|文昌|将星|禄神|羊刃)/],
+    ["原局干支关系", /(天干|地支|合|冲|刑|害|破|三合|六合|半合|拱合)/],
+    ["岁运干支关系", /(流年|岁运|太岁|值年|大运.*流年|流年.*大运)/],
+    ["大运排盘", /(大运|起止|运势|运程|\d+\s*岁)/],
+    ["当前流年", /(当前流年|今年|明年|流年)/],
+    ["流月", /(流月|节气|立春|惊蛰|清明|立夏|芒种|小暑|立秋|白露|寒露|立冬|大雪|小寒)/],
+  ];
+
+  const buckets: Record<string, string[]> = {};
+  for (const [section] of sectionMatchers) buckets[section] = [];
+
+  for (const line of lines) {
+    const matched = sectionMatchers.find(([, re]) => re.test(line));
+    const key = matched?.[0] || "基础信息";
+    buckets[key].push(`- ${line}`);
+  }
+
+  return Object.fromEntries(
+    Object.entries(buckets)
+      .filter(([, value]) => value.length > 0)
+      .map(([key, value]) => [key, value.join("\n")])
+  );
+};
+
 export const organizeOcrSections = async (rawText: string, onProgress?: (pct: number) => void): Promise<Record<string, string>> => {
   const controller = new AbortController();
   const timeoutId = setTimeout(() => controller.abort(), TIMEOUT_MS);
@@ -431,7 +783,7 @@ export const organizeOcrSections = async (rawText: string, onProgress?: (pct: nu
 
   try {
     const content = await fetchDeepSeekContentWithRetry({
-      model: "deepseek-v4-flash",
+      model: DEFAULT_MODEL,
       temperature: 0.2,
       max_tokens: 16384,
       messages: [
@@ -625,10 +977,7 @@ export const generateDirectionAnalysis = async (
   onProgress?: (pct: number) => void,
 ): Promise<DirectionResult | LifeDestinyResult> => {
   if (direction === "kline") {
-    return generateByBaziImage(
-      { name: ctx.name, gender: ctx.gender, imageBase64: ctx.imageBase64, imageMimeType: "image/png" },
-      (stage, pct) => { if (typeof pct === "number") onProgress?.(pct); },
-    );
+    return generateKlineFromOcr(ctx, onProgress);
   }
 
   const cached = await getDirectionCache(ctx.name, ctx.gender, ctx.rawText, direction, ctx.orientation);
@@ -643,9 +992,7 @@ export const generateDirectionAnalysis = async (
 
   try {
     const prompt = buildDirectionPrompt(ctx, direction);
-    const baziContext = `以下是从八字排盘截图中识别出的原始信息：
-
-${ctx.rawText}`;
+    const baziContext = buildStructuredBaziContext(ctx);
 
     onProgress?.(30);
     timer = setInterval(() => {
@@ -658,7 +1005,7 @@ ${ctx.rawText}`;
       temperature: 0.5,
       max_tokens: 8192,
       messages: [
-        { role: "system", content: "你是专业命理分析大师。输出纯 JSON，禁止 markdown。" },
+        { role: "system", content: "你是专业命理分析大师。基于结构化排盘 JSON 分析，输出纯 JSON，禁止 markdown。" },
         { role: "user", content: `${prompt}\n\n${baziContext}` },
       ],
     }, controller.signal);

@@ -78,6 +78,41 @@ export interface LifeDestinyResult {
 
 export type DirectionType = "kline" | "wealth" | "marriage" | "career" | "health" | "family";
 
+export interface ParsedBaziOcr {
+  name?: string;
+  gender?: "男" | "女";
+  calendar?: {
+    lunar?: string;
+    solar?: string;
+  };
+  pillars: {
+    year?: string;
+    month?: string;
+    day?: string;
+    hour?: string;
+  };
+  startLuck?: string;
+  transferLuck?: string;
+  commander?: string;
+  currentAge?: string;
+  daYun: Array<{
+    startYear?: string;
+    endYear?: string;
+    age?: string;
+    pillar?: string;
+  }>;
+  relations: {
+    originalHeavenly?: string[];
+    originalEarthly?: string[];
+    originalPillar?: string[];
+    luckHeavenly?: string[];
+    luckEarthly?: string[];
+    luckPillar?: string[];
+  };
+  keyShenSha: string[];
+  rawPreview: string;
+}
+
 export interface OcrContext {
   rawText: string;
   imageBase64: string;
@@ -85,6 +120,7 @@ export interface OcrContext {
   gender: "男" | "女";
   orientation?: "异性恋" | "同性恋" | "双性恋";
   baziSections?: Record<string, string>;
+  parsed?: ParsedBaziOcr;
 }
 
 export interface DirectionResult {

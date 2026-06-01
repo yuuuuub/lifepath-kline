@@ -3,12 +3,32 @@
 @tailwind utilities;
 
 body {
-  font-family: 'Inter', "PingFang SC", "Hiragino Sans GB", "Microsoft YaHei", sans-serif;
-  background-color: #f8f9fa;
+  font-family: ui-sans-serif, system-ui, -apple-system, BlinkMacSystemFont, "Segoe UI", "PingFang SC", "Hiragino Sans GB", "Microsoft YaHei", sans-serif;
+  background-color: #f8fafc;
+  color: #0f172a;
 }
 
 .font-serif-sc {
-  font-family: 'Noto Serif SC', serif;
+  font-family: "Songti SC", "STSong", "SimSun", "Noto Serif CJK SC", serif;
+}
+
+/* Animations used by components */
+@keyframes fadeIn {
+  from { opacity: 0; }
+  to { opacity: 1; }
+}
+
+@keyframes fadeInUp {
+  from { opacity: 0; transform: translateY(16px); }
+  to { opacity: 1; transform: translateY(0); }
+}
+
+.animate-fade-in {
+  animation: fadeIn 0.5s ease-out both;
+}
+
+.animate-fade-in-up {
+  animation: fadeInUp 0.6s ease-out both;
 }
 
 .custom-scrollbar::-webkit-scrollbar { width: 8px; }

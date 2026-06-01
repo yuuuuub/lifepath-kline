@@ -25,7 +25,7 @@ const getAccessToken = async (config: BaiduOcrConfig): Promise<string> => {
   }
   cachedToken = data.access_token;
   tokenExpiry = Date.now() + (data.expires_in - 300) * 1000;
-  return cachedToken;
+  return cachedToken!;
 };
 
 export const extractBaziFromImageBaidu = async (

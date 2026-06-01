@@ -1,8 +1,7 @@
 import React, { useState, useRef, useEffect } from "react";
 import { AlertCircle, Loader2, Sparkles, Upload } from "lucide-react";
 import { OcrContext } from "../types";
-import { doOCR, organizeOcrSections } from "../services/deepseekService";
-import { saveSectionsToD1, makeCacheKey } from "../services/cacheService";
+import { buildLocalOcrSections, doOCR, parseBaziOcr } from "../services/deepseekService";
 
 interface BaziImageFormProps {
   onSuccess: (ctx: OcrContext) => void;
@@ -14,7 +13,6 @@ const BaziImageForm: React.FC<BaziImageFormProps> = ({ onSuccess }) => {
   const [file, setFile] = useState<File | null>(null);
   const [loading, setLoading] = useState(false);
   const [loadingText, setLoadingText] = useState("");
-  const [progress, setProgress] = useState(0);
   const [error, setError] = useState<string | null>(null);
   const mountedRef = useRef(true);
 
@@ -25,7 +23,9 @@ const BaziImageForm: React.FC<BaziImageFormProps> = ({ onSuccess }) => {
   const compressImage = (imgFile: File, maxSize = 1200, quality = 0.7): Promise<string> =>
     new Promise((resolve, reject) => {
       const img = new Image();
+      const objectUrl = URL.createObjectURL(imgFile);
       img.onload = () => {
+        URL.revokeObjectURL(objectUrl);
         let { width, height } = img;
         if (width > maxSize || height > maxSize) {
           const ratio = Math.min(maxSize / width, maxSize / height);
@@ -43,8 +43,8 @@ const BaziImageForm: React.FC<BaziImageFormProps> = ({ onSuccess }) => {
         if (!base64) { reject(new Error("图片压缩后数据为空")); return; }
         resolve(base64);
       };
-      img.onerror = () => reject(new Error("图片加载失败"));
-      img.src = URL.createObjectURL(imgFile);
+      img.onerror = () => { URL.revokeObjectURL(objectUrl); reject(new Error("图片加载失败")); };
+      img.src = objectUrl;
     });
 
   const handleSubmit = async () => {
@@ -64,19 +64,19 @@ const BaziImageForm: React.FC<BaziImageFormProps> = ({ onSuccess }) => {
 
     try {
       setLoading(true);
-      setLoadingText("正在识别图片...");
+      setLoadingText("正在压缩图片...");
       const imageBase64 = await compressImage(file);
+      if (!mountedRef.current) return;
+      setLoadingText("正在识别图片...");
       const rawText = await doOCR(imageBase64);
-
-      setLoadingText("正在整理七大板块...");
-      setProgress(0);
-      const baziSections = await organizeOcrSections(rawText, (pct) => setProgress(pct));
-
-      const key = await makeCacheKey(name.trim(), gender, rawText);
-      saveSectionsToD1(key, name.trim(), gender, rawText, baziSections);
+      if (!rawText.trim()) throw new Error("OCR 未识别到有效文字，请换一张更清晰的截图");
+      if (!mountedRef.current) return;
+      setLoadingText("识别完成，正在整理排盘...");
+      const baziSections = buildLocalOcrSections(rawText);
+      const parsed = parseBaziOcr(rawText, name.trim(), gender);
 
       if (mountedRef.current) {
-        onSuccess({ rawText, imageBase64, name: name.trim(), gender, baziSections });
+        onSuccess({ rawText, imageBase64, name: name.trim(), gender, baziSections, parsed });
       }
     } catch (e) {
       const msg = e instanceof Error ? e.message : "识别失败，请稍后重试";
@@ -84,36 +84,35 @@ const BaziImageForm: React.FC<BaziImageFormProps> = ({ onSuccess }) => {
     } finally {
       if (mountedRef.current) {
         setLoading(false);
-        setProgress(0);
       }
     }
   };
 
   return (
-    <div className="w-full max-w-2xl bg-white p-8 md:p-10 rounded-2xl shadow-lg shadow-gray-200/50 border border-gray-100 relative overflow-hidden">
-      <div className="absolute top-0 left-0 right-0 h-1 bg-gradient-to-r from-indigo-500 via-purple-500 to-pink-500" />
+    <div className="w-full max-w-2xl bg-white/92 backdrop-blur p-6 md:p-8 rounded-2xl shadow-[0_18px_50px_rgba(15,23,42,0.08)] border border-white/70 relative overflow-hidden">
+      <div className="absolute inset-x-0 top-0 h-1 bg-gradient-to-r from-amber-400 via-slate-900 to-emerald-500" />
       <div className="text-center mb-8">
-        <h2 className="text-2xl font-bold font-serif-sc text-gray-800">上传问真八字图片</h2>
-        <p className="text-sm text-gray-400 mt-1.5">输入姓名和性别，AI 自动生成完整分析报告</p>
+        <h2 className="text-2xl font-bold font-serif-sc text-slate-900">上传图片</h2>
+        <p className="text-sm text-slate-500 mt-1.5">填好姓名和性别，放入排盘截图即可</p>
       </div>
 
       <div className="space-y-5">
         <div className="grid grid-cols-1 md:grid-cols-2 gap-4 items-end">
           <div>
-            <label className="block text-xs font-bold text-gray-500 mb-1.5 uppercase tracking-wider">姓名</label>
+            <label className="block text-xs font-bold text-slate-500 mb-1.5 uppercase tracking-wider">姓名</label>
             <input
               value={name}
               onChange={(e) => setName(e.target.value)}
-              placeholder="请输入姓名"
-              className="w-full h-11 px-4 bg-gray-50 border border-gray-200 rounded-xl focus:bg-white focus:ring-2 focus:ring-indigo-500/20 focus:border-indigo-400 outline-none transition-all text-sm"
+              placeholder="姓名"
+              className="w-full h-11 px-4 bg-slate-50 border border-slate-200 rounded-lg focus:bg-white focus:ring-2 focus:ring-emerald-500/20 focus:border-emerald-500 outline-none transition-all text-sm"
             />
           </div>
           <div>
-            <label className="block text-xs font-bold text-gray-500 mb-1.5 uppercase tracking-wider">性别</label>
+            <label className="block text-xs font-bold text-slate-500 mb-1.5 uppercase tracking-wider">性别</label>
             <select
               value={gender}
               onChange={(e) => setGender(e.target.value as "男" | "女")}
-              className="w-full h-11 px-4 bg-gray-50 border border-gray-200 rounded-xl focus:bg-white focus:ring-2 focus:ring-indigo-500/20 focus:border-indigo-400 outline-none transition-all text-sm appearance-none"
+              className="w-full h-11 px-4 bg-slate-50 border border-slate-200 rounded-lg focus:bg-white focus:ring-2 focus:ring-emerald-500/20 focus:border-emerald-500 outline-none transition-all text-sm appearance-none"
             >
               <option value="男">男</option>
               <option value="女">女</option>
@@ -122,11 +121,11 @@ const BaziImageForm: React.FC<BaziImageFormProps> = ({ onSuccess }) => {
         </div>
 
         <div>
-          <label className="block text-xs font-bold text-gray-500 mb-1.5 uppercase tracking-wider">问真八字排盘截图</label>
-          <label className={`flex items-center justify-center gap-3 px-4 py-6 border-2 border-dashed rounded-xl cursor-pointer transition-all ${file ? 'border-indigo-300 bg-indigo-50/30' : 'border-gray-200 hover:border-indigo-300 hover:bg-gray-50'}`}>
-            <Upload className={`w-5 h-5 ${file ? 'text-indigo-600' : 'text-gray-400'}`} />
-            <span className={`text-sm ${file ? 'text-indigo-700 font-medium' : 'text-gray-500'}`}>
-              {file ? file.name : "点击上传截图"}
+          <label className="block text-xs font-bold text-slate-500 mb-1.5 uppercase tracking-wider">截图</label>
+          <label className={`flex items-center justify-center gap-3 px-4 py-6 border-2 border-dashed rounded-lg cursor-pointer transition-all ${file ? 'border-emerald-300 bg-emerald-50/50' : 'border-slate-200 hover:border-emerald-300 hover:bg-slate-50'}`}>
+            <Upload className={`w-5 h-5 ${file ? 'text-emerald-600' : 'text-slate-400'}`} />
+            <span className={`text-sm ${file ? 'text-emerald-700 font-medium' : 'text-slate-500'}`}>
+              {file ? file.name : "点击上传"}
             </span>
             <input
               type="file"
@@ -138,35 +137,26 @@ const BaziImageForm: React.FC<BaziImageFormProps> = ({ onSuccess }) => {
         </div>
 
         {error && (
-          <div className="flex items-center gap-2.5 text-red-600 bg-red-50 px-4 py-3 rounded-xl border border-red-100">
+          <div className="flex items-center gap-2.5 text-red-600 bg-red-50 px-4 py-3 rounded-lg border border-red-100">
             <AlertCircle className="w-4 h-4 flex-shrink-0" />
             <p className="text-sm font-medium">{error}</p>
-          </div>
-        )}
-
-        {loading && progress > 0 && (
-          <div className="space-y-1">
-            <div className="w-full h-1.5 bg-gray-100 rounded-full overflow-hidden">
-              <div className="h-full bg-gradient-to-r from-indigo-500 to-purple-500 rounded-full transition-all duration-500" style={{ width: `${progress}%` }} />
-            </div>
-            <p className="text-xs text-gray-400 text-center">{progress}%</p>
           </div>
         )}
 
         <button
           onClick={handleSubmit}
           disabled={loading}
-          className="w-full bg-gradient-to-r from-indigo-600 to-purple-600 hover:from-indigo-700 hover:to-purple-700 disabled:from-gray-300 disabled:to-gray-400 text-white font-bold py-3.5 rounded-xl shadow-lg shadow-indigo-500/20 hover:shadow-indigo-500/30 transition-all flex items-center justify-center gap-2 text-sm"
+          className="w-full bg-slate-900 hover:bg-slate-800 disabled:bg-slate-300 text-white font-bold py-3.5 rounded-lg shadow-sm transition-all flex items-center justify-center gap-2 text-sm"
         >
           {loading ? (
             <>
               <Loader2 className="w-4 h-4 animate-spin" />
-              {loadingText || "识别图片中..."}
+              {loadingText || "识别中..."}
             </>
           ) : (
             <>
               <Sparkles className="w-4 h-4" />
-              上传并识别八字
+              开始
             </>
           )}
         </button>

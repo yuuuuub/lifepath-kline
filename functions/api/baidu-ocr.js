@@ -1,3 +1,6 @@
+let cachedToken = null;
+let tokenExpiry = 0;
+
 export async function onRequest(context) {
   const { request, env } = context;
 
@@ -37,17 +40,21 @@ export async function onRequest(context) {
       return new Response(JSON.stringify({ error: '缺少 imageBase64 参数' }), { status: 400, headers });
     }
 
-    // 获取 access_token
-    const tokenRes = await fetch(
-      `https://aip.baidubce.com/oauth/2.0/token?grant_type=client_credentials&client_id=${apiKey}&client_secret=${secretKey}`,
-      { method: 'POST' }
-    );
-    const tokenData = await tokenRes.json();
+    if (!cachedToken || Date.now() >= tokenExpiry) {
+      const tokenRes = await fetch(
+        `https://aip.baidubce.com/oauth/2.0/token?grant_type=client_credentials&client_id=${apiKey}&client_secret=${secretKey}`,
+        { method: 'POST' }
+      );
+      const tokenData = await tokenRes.json();
 
-    if (!tokenData.access_token) {
-      return new Response(JSON.stringify({
-        error: `百度鉴权失败：${tokenData.error_description || tokenData.error || '未知错误'}`,
-      }), { status: 500, headers });
+      if (!tokenData.access_token) {
+        return new Response(JSON.stringify({
+          error: `百度鉴权失败：${tokenData.error_description || tokenData.error || '未知错误'}`,
+        }), { status: 500, headers });
+      }
+
+      cachedToken = tokenData.access_token;
+      tokenExpiry = Date.now() + Math.max(60, (tokenData.expires_in || 3600) - 300) * 1000;
     }
 
     // 调用 OCR
@@ -55,7 +62,7 @@ export async function onRequest(context) {
     formData.append('image', imageBase64);
 
     const ocrRes = await fetch(
-      `https://aip.baidubce.com/rest/2.0/ocr/v1/accurate_basic?access_token=${tokenData.access_token}`,
+      `https://aip.baidubce.com/rest/2.0/ocr/v1/accurate_basic?access_token=${cachedToken}`,
       {
         method: 'POST',
         headers: { 'Content-Type': 'application/x-www-form-urlencoded' },
