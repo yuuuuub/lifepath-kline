@@ -113,6 +113,13 @@ export interface ParsedBaziOcr {
   rawPreview: string;
 }
 
+export interface BaziPillars {
+  year?: string;
+  month?: string;
+  day?: string;
+  hour?: string;
+}
+
 export interface OcrContext {
   rawText: string;
   imageBase64: string;

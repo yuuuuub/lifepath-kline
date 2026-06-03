@@ -1,4 +1,4 @@
-import { LifeDestinyResult, DirectionResult, DirectionType } from "../types";
+import { LifeDestinyResult, DirectionResult, DirectionType, BaziPillars } from "../types";
 
 const DB_NAME = "lifepath-kline-cache";
 const DB_VERSION = 3;
@@ -24,41 +24,6 @@ function openDB(): Promise<IDBDatabase> {
   });
 }
 
-function normalizeText(s: string): string {
-  return s
-    .replace(/[\s\u3000]+/g, "")
-    .replace(/[：:]/g, ":")
-    .trim();
-}
-
-function extractField(text: string, pattern: RegExp): string {
-  const m = text.match(pattern);
-  if (!m) return "";
-  return m[1]
-    .replace(/[，,、\s\u3000]+/g, ",")
-    .replace(/[岁年]/g, "")
-    .replace(/^,+|,+$/g, "")
-    .trim();
-}
-
-function extractBaziCore(rawText: string): string {
-  const normalized = normalizeText(rawText);
-
-  const fields = [
-    extractField(normalized, /年柱:(.+?)(?=日柱:|月柱:|时柱:|起运|大运|出生|$)/),
-    extractField(normalized, /月柱:(.+?)(?=日柱:|时柱:|年柱:|起运|大运|出生|$)/),
-    extractField(normalized, /日柱:(.+?)(?=时柱:|月柱:|年柱:|起运|大运|出生|$)/),
-    extractField(normalized, /时柱:(.+?)(?=起运|大运|出生|月柱:|日柱:|年柱:|$)/),
-    extractField(normalized, /起运年龄:(.+?)(?=大运|出生|年柱:|月柱:|日柱:|时柱:|$)/),
-    extractField(normalized, /大运:(.+?)(?=出生|年柱:|月柱:|日柱:|时柱:|起运|$)/),
-    extractField(normalized, /出生年份:(.+?)(?=年柱:|月柱:|日柱:|时柱:|起运|大运|$)/),
-  ];
-
-  const nonEmpty = fields.filter(f => f.length > 0);
-  if (nonEmpty.length >= 4) return nonEmpty.join("|");
-  return normalized;
-}
-
 function simpleHash(str: string): string {
   let hash = 0;
   for (let i = 0; i < str.length; i++) {
@@ -69,9 +34,9 @@ function simpleHash(str: string): string {
   return Math.abs(hash).toString(36);
 }
 
-export async function makeCacheKey(name: string, gender: string, rawText: string): Promise<string> {
-  const baziCore = extractBaziCore(rawText);
-  const data = `${name}|${gender}|${baziCore}`;
+export async function makeCacheKey(name: string, gender: string, pillars: BaziPillars): Promise<string> {
+  const core = [pillars.year || '', pillars.month || '', pillars.day || '', pillars.hour || ''].join('|');
+  const data = `${name}|${gender}|${core}`;
 
   if (typeof crypto !== 'undefined' && crypto.subtle) {
     try {
@@ -87,7 +52,13 @@ export async function makeCacheKey(name: string, gender: string, rawText: string
   return simpleHash(data) + simpleHash(data.split('').reverse().join(''));
 }
 
-async function fetchFromD1(key: string): Promise<LifeDestinyResult | null> {
+function pillarsToText(pillars: BaziPillars): string {
+  return [pillars.year, pillars.month, pillars.day, pillars.hour].filter(Boolean).join(' ');
+}
+
+// ========== D1 读写 ==========
+
+async function fetchFromD1(key: string): Promise<LifeDestinyResult | DirectionResult | null> {
   if (!API_BASE) return null;
   try {
     const res = await fetch(`${API_BASE}?key=${encodeURIComponent(key)}`);
@@ -100,27 +71,29 @@ async function fetchFromD1(key: string): Promise<LifeDestinyResult | null> {
   }
 }
 
-export async function saveSectionsToD1(key: string, name: string, gender: string, rawText: string, sections: Record<string, string>): Promise<void> {
+async function saveToD1(key: string, name: string, gender: string, pillars: BaziPillars, result: LifeDestinyResult | DirectionResult): Promise<void> {
   if (!API_BASE) return;
   try {
-    fetch(`${API_BASE}`, {
+    await fetch(`${API_BASE}`, {
       method: "POST",
       headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({ key, name, gender, rawText, sections }),
+      body: JSON.stringify({ key, name, gender, rawText: pillarsToText(pillars), result }),
     }).catch(() => {});
   } catch {}
 }
 
-async function saveToD1(key: string, name: string, gender: string, rawText: string, result: LifeDestinyResult): Promise<void> {
+export async function saveSectionsToD1(key: string, name: string, gender: string, pillars: BaziPillars, sections: Record<string, string>): Promise<void> {
   if (!API_BASE) return;
   try {
-    fetch(`${API_BASE}`, {
+    await fetch(`${API_BASE}`, {
       method: "POST",
       headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({ key, name, gender, rawText, result }),
+      body: JSON.stringify({ key, name, gender, rawText: pillarsToText(pillars), sections }),
     }).catch(() => {});
   } catch {}
 }
+
+// ========== IndexedDB 读写 ==========
 
 async function getFromIDB(key: string): Promise<LifeDestinyResult | null> {
   try {
@@ -128,6 +101,21 @@ async function getFromIDB(key: string): Promise<LifeDestinyResult | null> {
     return new Promise((resolve, reject) => {
       const tx = db.transaction(STORE_NAME, "readonly");
       const store = tx.objectStore(STORE_NAME);
+      const req = store.get(key);
+      req.onsuccess = () => { db.close(); resolve(req.result ?? null); };
+      req.onerror = () => { db.close(); reject(req.error); };
+    });
+  } catch {
+    return null;
+  }
+}
+
+async function getDirectionFromIDB(key: string): Promise<DirectionResult | null> {
+  try {
+    const db = await openDB();
+    return new Promise((resolve, reject) => {
+      const tx = db.transaction(DIRECTION_STORE, "readonly");
+      const store = tx.objectStore(DIRECTION_STORE);
       const req = store.get(key);
       req.onsuccess = () => { db.close(); resolve(req.result ?? null); };
       req.onerror = () => { db.close(); reject(req.error); };
@@ -151,51 +139,7 @@ async function saveToIDB(key: string, result: LifeDestinyResult): Promise<void> 
   } catch {}
 }
 
-export async function getFromCache(name: string, gender: string, rawText: string): Promise<LifeDestinyResult | null> {
-  const key = await makeCacheKey(name, gender, rawText);
-
-  const local = await getFromIDB(key);
-  if (local) return local;
-
-  const remote = await fetchFromD1(key);
-  if (remote) {
-    saveToIDB(key, remote);
-    return remote;
-  }
-
-  return null;
-}
-
-export async function saveToCache(name: string, gender: string, rawText: string, result: LifeDestinyResult): Promise<void> {
-  const key = await makeCacheKey(name, gender, rawText);
-  saveToIDB(key, result);
-  saveToD1(key, name, gender, rawText, result);
-}
-
-async function makeDirectionKey(name: string, gender: string, rawText: string, direction: DirectionType, orientation?: string): Promise<string> {
-  const base = await makeCacheKey(name, gender, rawText);
-  const suffix = orientation ? `:${orientation}` : '';
-  return `${base}:${direction}${suffix}`;
-}
-
-export async function getDirectionCache(name: string, gender: string, rawText: string, direction: DirectionType, orientation?: string): Promise<DirectionResult | null> {
-  const key = await makeDirectionKey(name, gender, rawText, direction, orientation);
-  try {
-    const db = await openDB();
-    return new Promise((resolve, reject) => {
-      const tx = db.transaction(DIRECTION_STORE, "readonly");
-      const store = tx.objectStore(DIRECTION_STORE);
-      const req = store.get(key);
-      req.onsuccess = () => { db.close(); resolve(req.result ?? null); };
-      req.onerror = () => { db.close(); reject(req.error); };
-    });
-  } catch {
-    return null;
-  }
-}
-
-export async function saveDirectionCache(name: string, gender: string, rawText: string, direction: DirectionType, result: DirectionResult, orientation?: string): Promise<void> {
-  const key = await makeDirectionKey(name, gender, rawText, direction, orientation);
+async function saveDirectionToIDB(key: string, result: DirectionResult): Promise<void> {
   try {
     const db = await openDB();
     return new Promise((resolve, reject) => {
@@ -207,6 +151,60 @@ export async function saveDirectionCache(name: string, gender: string, rawText: 
     });
   } catch {}
 }
+
+// ========== K线主缓存 ==========
+
+export async function getFromCache(name: string, gender: string, pillars: BaziPillars): Promise<LifeDestinyResult | null> {
+  const key = await makeCacheKey(name, gender, pillars);
+
+  const local = await getFromIDB(key);
+  if (local) return local;
+
+  const remote = await fetchFromD1(key) as LifeDestinyResult | null;
+  if (remote) {
+    saveToIDB(key, remote);
+    return remote;
+  }
+
+  return null;
+}
+
+export async function saveToCache(name: string, gender: string, pillars: BaziPillars, result: LifeDestinyResult): Promise<void> {
+  const key = await makeCacheKey(name, gender, pillars);
+  saveToIDB(key, result);
+  saveToD1(key, name, gender, pillars, result);
+}
+
+// ========== 方向分析缓存 (IndexedDB + D1) ==========
+
+async function makeDirectionKey(name: string, gender: string, pillars: BaziPillars, direction: DirectionType, orientation?: string): Promise<string> {
+  const base = await makeCacheKey(name, gender, pillars);
+  const suffix = orientation ? `:${orientation}` : '';
+  return `${base}:${direction}${suffix}`;
+}
+
+export async function getDirectionCache(name: string, gender: string, pillars: BaziPillars, direction: DirectionType, orientation?: string): Promise<DirectionResult | null> {
+  const key = await makeDirectionKey(name, gender, pillars, direction, orientation);
+
+  const local = await getDirectionFromIDB(key);
+  if (local) return local;
+
+  const remote = await fetchFromD1(key) as DirectionResult | null;
+  if (remote) {
+    saveDirectionToIDB(key, remote);
+    return remote;
+  }
+
+  return null;
+}
+
+export async function saveDirectionCache(name: string, gender: string, pillars: BaziPillars, direction: DirectionType, result: DirectionResult, orientation?: string): Promise<void> {
+  const key = await makeDirectionKey(name, gender, pillars, direction, orientation);
+  saveDirectionToIDB(key, result);
+  saveToD1(key, name, gender, pillars, result);
+}
+
+// ========== 清理 ==========
 
 export async function clearCache(): Promise<void> {
   try {

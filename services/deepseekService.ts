@@ -1,4 +1,4 @@
-import { LifeDestinyResult, DirectionResult, DirectionType, OcrContext, ParsedBaziOcr } from "../types";
+import { LifeDestinyResult, DirectionResult, DirectionType, OcrContext, ParsedBaziOcr, BaziPillars } from "../types";
 import { extractBaziFromImageBaidu, BaiduOcrConfig } from "./baiduOcrService";
 import { getFromCache, saveToCache, getDirectionCache, saveDirectionCache } from "./cacheService";
 
@@ -280,6 +280,10 @@ const collectRelation = (rawText: string, label: string): string[] => {
     .filter(item => item && item !== "无");
 };
 
+const getPillars = (ctx: OcrContext): BaziPillars => {
+  return ctx.parsed?.pillars || parseBaziOcr(ctx.rawText, ctx.name, ctx.gender).pillars;
+};
+
 const extractPillars = (lines: string[]): ParsedBaziOcr["pillars"] => {
   const stemRowIndex = lines.findIndex(line => line === "天干");
   const branchRowIndex = lines.findIndex(line => line === "地支");
@@ -509,7 +513,8 @@ export const generateByBaziImage = async (
     ocrConfig
   );
 
-  const cached = await getFromCache(input.name, input.gender, rawText);
+  const parsed = parseBaziOcr(rawText, input.name, input.gender);
+  const cached = await getFromCache(input.name, input.gender, parsed.pillars);
   if (cached) {
     onProgress?.("cached", 100);
     return cached;
@@ -535,7 +540,7 @@ export const generateByBaziImage = async (
       name: input.name,
       gender: input.gender,
       baziSections,
-      parsed: parseBaziOcr(rawText, input.name, input.gender),
+      parsed,
     });
 
     const result = await callDeepSeekAPI([
@@ -550,7 +555,7 @@ export const generateByBaziImage = async (
     ], controller.signal);
 
     result.imageBase64 = input.imageBase64;
-    await saveToCache(input.name, input.gender, rawText, result);
+    await saveToCache(input.name, input.gender, parsed.pillars, result);
     onProgress?.("generating", 100);
     return result;
   } catch (e: any) {
@@ -574,7 +579,8 @@ export const generateKlineFromOcr = async (
   ctx: OcrContext,
   onProgress?: (pct: number) => void,
 ): Promise<LifeDestinyResult> => {
-  const cached = await getFromCache(ctx.name, ctx.gender, ctx.rawText);
+  const pillars = getPillars(ctx);
+  const cached = await getFromCache(ctx.name, ctx.gender, pillars);
   if (cached) {
     onProgress?.(100);
     return cached;
@@ -605,7 +611,7 @@ export const generateKlineFromOcr = async (
 
     result.imageBase64 = ctx.imageBase64;
     result.analysis.baziSections = ctx.baziSections || result.analysis.baziSections;
-    await saveToCache(ctx.name, ctx.gender, ctx.rawText, result);
+    await saveToCache(ctx.name, ctx.gender, pillars, result);
     onProgress?.(100);
     return result;
   } catch (e: any) {
@@ -663,7 +669,8 @@ export const generateKlineOverviewFromOcr = async (
   ctx: OcrContext,
   onProgress?: (pct: number) => void,
 ): Promise<LifeDestinyResult> => {
-  const cached = await getFromCache(ctx.name, ctx.gender, ctx.rawText);
+  const pillars = getPillars(ctx);
+  const cached = await getFromCache(ctx.name, ctx.gender, pillars);
   if (cached) {
     onProgress?.(100);
     return cached;
@@ -1001,7 +1008,8 @@ export const generateDirectionAnalysis = async (
     return generateKlineFromOcr(ctx, onProgress);
   }
 
-  const cached = await getDirectionCache(ctx.name, ctx.gender, ctx.rawText, direction, ctx.orientation);
+  const pillars = getPillars(ctx);
+  const cached = await getDirectionCache(ctx.name, ctx.gender, pillars, direction, ctx.orientation);
   if (cached) { onProgress?.(100); return cached; }
 
   onProgress?.(10);
@@ -1045,7 +1053,7 @@ export const generateDirectionAnalysis = async (
       preference: typeof data.preference === "string" ? data.preference : undefined,
     };
 
-    saveDirectionCache(ctx.name, ctx.gender, ctx.rawText, direction, result, ctx.orientation);
+    saveDirectionCache(ctx.name, ctx.gender, pillars, direction, result, ctx.orientation);
     onProgress?.(100);
     return result;
   } catch (e: any) {
