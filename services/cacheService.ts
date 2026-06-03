@@ -59,13 +59,32 @@ function extractBaziCore(rawText: string): string {
   return normalized;
 }
 
+function simpleHash(str: string): string {
+  let hash = 0;
+  for (let i = 0; i < str.length; i++) {
+    const char = str.charCodeAt(i);
+    hash = ((hash << 5) - hash) + char;
+    hash |= 0;
+  }
+  return Math.abs(hash).toString(36);
+}
+
 export async function makeCacheKey(name: string, gender: string, rawText: string): Promise<string> {
   const baziCore = extractBaziCore(rawText);
   const data = `${name}|${gender}|${baziCore}`;
-  const encoder = new TextEncoder();
-  const hashBuffer = await crypto.subtle.digest("SHA-256", encoder.encode(data));
-  const hashArray = Array.from(new Uint8Array(hashBuffer));
-  return hashArray.map(b => b.toString(16).padStart(2, "0")).join("");
+
+  if (typeof crypto !== 'undefined' && crypto.subtle) {
+    try {
+      const encoder = new TextEncoder();
+      const hashBuffer = await crypto.subtle.digest("SHA-256", encoder.encode(data));
+      const hashArray = Array.from(new Uint8Array(hashBuffer));
+      return hashArray.map(b => b.toString(16).padStart(2, "0")).join("");
+    } catch (e) {
+      console.warn('crypto.subtle 不可用，使用 fallback hash:', e);
+    }
+  }
+
+  return simpleHash(data) + simpleHash(data.split('').reverse().join(''));
 }
 
 async function fetchFromD1(key: string): Promise<LifeDestinyResult | null> {
@@ -88,7 +107,7 @@ export async function saveSectionsToD1(key: string, name: string, gender: string
       method: "POST",
       headers: { "Content-Type": "application/json" },
       body: JSON.stringify({ key, name, gender, rawText, sections }),
-    });
+    }).catch(() => {});
   } catch {}
 }
 
@@ -99,7 +118,7 @@ async function saveToD1(key: string, name: string, gender: string, rawText: stri
       method: "POST",
       headers: { "Content-Type": "application/json" },
       body: JSON.stringify({ key, name, gender, rawText, result }),
-    });
+    }).catch(() => {});
   } catch {}
 }
 

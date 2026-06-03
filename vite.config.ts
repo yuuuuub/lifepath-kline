@@ -27,11 +27,11 @@ function devApiProxy(env: Record<string, string>): Plugin {
           return;
         }
 
-        const apiKey = env.VITE_BAIDU_OCR_API_KEY || '';
-        const secretKey = env.VITE_BAIDU_OCR_SECRET_KEY || '';
+        const apiKey = env.BAIDU_OCR_API_KEY || '';
+        const secretKey = env.BAIDU_OCR_SECRET_KEY || '';
         if (!apiKey || !secretKey) {
           res.writeHead(500, { 'Content-Type': 'application/json' });
-          res.end(JSON.stringify({ error: '请配置 VITE_BAIDU_OCR_API_KEY 和 VITE_BAIDU_OCR_SECRET_KEY' }));
+          res.end(JSON.stringify({ error: '请配置 BAIDU_OCR_API_KEY 和 BAIDU_OCR_SECRET_KEY' }));
           return;
         }
 
@@ -140,22 +140,17 @@ export default defineConfig(({ mode }) => {
           changeOrigin: true,
           rewrite: (path) => path.replace(/^\/api\/deepseek/, ''),
           headers: {
-            Authorization: `Bearer ${env.VITE_DEEPSEEK_API_KEY || ''}`,
+            Authorization: `Bearer ${env.DEEPSEEK_API_KEY || ''}`,
           },
         },
         '/api/vision': {
           target:
-            env.VITE_VISION_BASE_URL ||
+            env.VISION_BASE_URL ||
             'https://dashscope.aliyuncs.com/compatible-mode/v1',
           changeOrigin: true,
           rewrite: (path) => path.replace(/^\/api\/vision/, ''),
         },
       },
-    },
-    define: {
-      'process.env.API_KEY': JSON.stringify(
-        env.API_KEY || env.VITE_API_KEY || ''
-      ),
     },
   };
 });

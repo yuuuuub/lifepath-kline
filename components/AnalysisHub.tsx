@@ -119,8 +119,10 @@ const AnalysisHub: React.FC<AnalysisHubProps> = ({ ocrContext, onReset }) => {
   const [sectionsExpanded, setSectionsExpanded] = useState(false);
 
   const handleDirectionSelect = async (direction: DirectionType) => {
+    console.log('handleDirectionSelect called:', direction);
     setError(null);
     setActiveDirection(direction);
+    setDirectionResult(null);
     setLoading(true);
     setProgress(0);
 
@@ -131,9 +133,12 @@ const AnalysisHub: React.FC<AnalysisHubProps> = ({ ocrContext, onReset }) => {
 
     if (direction === "kline") {
       try {
+        console.log('generateKlineOverviewFromOcr starting...');
         const overview = await generateKlineOverviewFromOcr(ctx, (pct) => setProgress(pct));
+        console.log('generateKlineOverviewFromOcr done:', overview ? 'has data' : 'empty', 'chartData:', overview?.chartData?.length);
         setDirectionResult(overview);
         setLoading(false);
+        console.log('setLoading(false) after overview');
 
         if ((overview as LifeDestinyResult).chartData?.length > 0) return;
 
@@ -141,15 +146,19 @@ const AnalysisHub: React.FC<AnalysisHubProps> = ({ ocrContext, onReset }) => {
         setChartProgress(0);
         generateKlineFromOcr(ctx, (pct) => setChartProgress(pct))
           .then((fullResult) => {
+            console.log('generateKlineFromOcr 完成, chartData:', fullResult?.chartData?.length);
             setDirectionResult(fullResult);
           })
           .catch((e) => {
+            console.error('generateKlineFromOcr 失败:', e);
             setError(e instanceof Error ? e.message : "K线图生成失败");
           })
           .finally(() => {
+            console.log('generateKlineFromOcr finally, setChartLoading(false)');
             setChartLoading(false);
           });
       } catch (e) {
+        console.error('kline方向异常:', e);
         setError(e instanceof Error ? e.message : "分析失败");
         setLoading(false);
       }
@@ -160,6 +169,7 @@ const AnalysisHub: React.FC<AnalysisHubProps> = ({ ocrContext, onReset }) => {
       const result = await generateDirectionAnalysis(ctx, direction, (pct) => setProgress(pct));
       setDirectionResult(result);
     } catch (e) {
+      console.error('direction分析异常:', direction, e);
       setError(e instanceof Error ? e.message : "分析失败");
     } finally {
       setLoading(false);
@@ -175,7 +185,8 @@ const AnalysisHub: React.FC<AnalysisHubProps> = ({ ocrContext, onReset }) => {
   };
 
   if (activeDirection && directionResult) {
-    if (activeDirection === "kline") {
+    console.log('渲染守卫: activeDirection=', activeDirection, 'has analysis=', 'analysis' in (directionResult as any), 'has chartData=', 'chartData' in (directionResult as any), 'has title=', 'title' in (directionResult as any), 'has highlights=', 'highlights' in (directionResult as any));
+    if (activeDirection === "kline" && 'analysis' in (directionResult as any) && 'chartData' in (directionResult as any)) {
       const kline = directionResult as LifeDestinyResult;
       const hasChartData = kline.chartData && kline.chartData.length > 0;
       return (
@@ -226,6 +237,17 @@ const AnalysisHub: React.FC<AnalysisHubProps> = ({ ocrContext, onReset }) => {
       );
     }
 
+    if (!('title' in (directionResult as any) && 'highlights' in (directionResult as any))) {
+      console.warn('directionResult 类型不匹配，回退到选择页', directionResult);
+      setDirectionResult(null);
+      setActiveDirection(null);
+      return (
+        <div className="flex flex-col items-center justify-center py-20 gap-4">
+          <Loader2 className="w-8 h-8 text-indigo-600 animate-spin" />
+          <p className="text-gray-600 font-medium">加载中...</p>
+        </div>
+      );
+    }
     const dr = directionResult as DirectionResult;
     return (
       <div className="animate-fade-in space-y-6">

@@ -1,5 +1,5 @@
 
-import React, { useState } from 'react';
+import React, { useState, useCallback } from 'react';
 import BaziImageForm from './components/BaziImageForm';
 import AnalysisHub from './components/AnalysisHub';
 import { OcrContext } from './types';
@@ -7,6 +7,12 @@ import { Sparkles, Feather } from 'lucide-react';
 
 const App: React.FC = () => {
   const [ocrContext, setOcrContext] = useState<OcrContext | null>(null);
+  const [resetCount, setResetCount] = useState(0);
+
+  const handleReset = useCallback(() => {
+    setOcrContext(null);
+    setResetCount(c => c + 1);
+  }, []);
 
   return (
     <div className="min-h-screen bg-[#f7f4ef] text-slate-900 flex flex-col items-center">
@@ -54,8 +60,9 @@ const App: React.FC = () => {
 
         {ocrContext && (
           <AnalysisHub
+            key={resetCount}
             ocrContext={ocrContext}
-            onReset={() => setOcrContext(null)}
+            onReset={handleReset}
           />
         )}
       </main>

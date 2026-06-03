@@ -20,31 +20,24 @@ const BaziImageForm: React.FC<BaziImageFormProps> = ({ onSuccess }) => {
     return () => { mountedRef.current = false; };
   }, []);
 
-  const compressImage = (imgFile: File, maxSize = 1200, quality = 0.7): Promise<string> =>
+  const nextFrame = () => new Promise<void>((resolve) => {
+    requestAnimationFrame(() => resolve());
+  });
+
+  const fileToBase64 = (imgFile: File): Promise<string> =>
     new Promise((resolve, reject) => {
-      const img = new Image();
-      const objectUrl = URL.createObjectURL(imgFile);
-      img.onload = () => {
-        URL.revokeObjectURL(objectUrl);
-        let { width, height } = img;
-        if (width > maxSize || height > maxSize) {
-          const ratio = Math.min(maxSize / width, maxSize / height);
-          width = Math.round(width * ratio);
-          height = Math.round(height * ratio);
+      const reader = new FileReader();
+      reader.onload = () => {
+        const result = String(reader.result || "");
+        const base64 = result.split(",")[1];
+        if (!base64) {
+          reject(new Error("图片读取失败"));
+          return;
         }
-        const canvas = document.createElement("canvas");
-        canvas.width = width;
-        canvas.height = height;
-        const ctx = canvas.getContext("2d");
-        if (!ctx) { reject(new Error("图片压缩失败")); return; }
-        ctx.drawImage(img, 0, 0, width, height);
-        const dataUrl = canvas.toDataURL("image/jpeg", quality);
-        const base64 = dataUrl.split(",")[1];
-        if (!base64) { reject(new Error("图片压缩后数据为空")); return; }
         resolve(base64);
       };
-      img.onerror = () => { URL.revokeObjectURL(objectUrl); reject(new Error("图片加载失败")); };
-      img.src = objectUrl;
+      reader.onerror = () => reject(new Error("图片读取失败"));
+      reader.readAsDataURL(imgFile);
     });
 
   const handleSubmit = async () => {
@@ -64,14 +57,17 @@ const BaziImageForm: React.FC<BaziImageFormProps> = ({ onSuccess }) => {
 
     try {
       setLoading(true);
-      setLoadingText("正在压缩图片...");
-      const imageBase64 = await compressImage(file);
+      setLoadingText("正在读取图片...");
+      await nextFrame();
+      const imageBase64 = await fileToBase64(file);
       if (!mountedRef.current) return;
       setLoadingText("正在识别图片...");
+      await nextFrame();
       const rawText = await doOCR(imageBase64);
       if (!rawText.trim()) throw new Error("OCR 未识别到有效文字，请换一张更清晰的截图");
       if (!mountedRef.current) return;
       setLoadingText("识别完成，正在整理排盘...");
+      await nextFrame();
       const baziSections = buildLocalOcrSections(rawText);
       const parsed = parseBaziOcr(rawText, name.trim(), gender);
 

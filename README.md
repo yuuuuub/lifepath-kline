@@ -21,10 +21,10 @@
 复制 `.env.example` 为 `.env`，填入以下 API Key：
 
 ```env
-VITE_DEEPSEEK_API_KEY=sk-xxx   # DeepSeek API（命理分析）
-VITE_VISION_API_KEY=sk-xxx     # 视觉识别 API（OCR，支持 OpenAI / Gemini 等）
-VITE_VISION_BASE_URL=https://api.openai.com/v1
-VITE_VISION_MODEL=gpt-4o
+# 仅本地开发需要，生产环境在 Cloudflare Pages 环境变量中配置（不带 VITE_ 前缀）
+DEEPSEEK_API_KEY=sk-xxx        # DeepSeek API（命理分析）
+BAIDU_OCR_API_KEY=xxx          # 百度 OCR API Key
+BAIDU_OCR_SECRET_KEY=xxx       # 百度 OCR Secret Key
 ```
 
 ### 本地运行
@@ -39,7 +39,7 @@ npm run build      # 生产构建
 
 [![Deploy with Vercel](https://vercel.com/button)](https://vercel.com/new/clone?repository-url=https://github.com/yuuuuub/lifepath-kline)
 
-克隆后在 Vercel 的 **Environment Variables** 中设置上述 4 个环境变量即可。
+克隆后在 Vercel 或 Cloudflare Pages 的 **Environment Variables** 中设置上述环境变量即可（不带 VITE_ 前缀）。
 
 ---
 

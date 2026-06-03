@@ -2,8 +2,7 @@ name = "lifekline"
 pages_build_output_dir = "dist"
 compatibility_date = "2024-01-01"
 
-[env.production.vars]
-DEEPSEEK_API_KEY = ""
-BAIDU_OCR_API_KEY = ""
-BAIDU_OCR_SECRET_KEY = ""
-VISION_API_KEY = ""
+[[d1_databases]]
+binding = "DB"
+database_name = "lifepath-db"
+database_id = "c58dcf30-bd97-43b3-9b3b-5a259481506a"

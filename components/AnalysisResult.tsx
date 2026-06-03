@@ -100,6 +100,10 @@ const Card = ({ title, icon: Icon, content, score, color, extraBadges }: any) =>
 };
 
 const AnalysisResult: React.FC<AnalysisResultProps> = ({ analysis }) => {
+  if (!analysis) {
+    return <div className="h-[200px] flex items-center justify-center text-gray-400">数据加载中...</div>;
+  }
+
   return (
     <div className="w-full space-y-8 animate-fade-in-up">
       {/* Bazi Pillars */}

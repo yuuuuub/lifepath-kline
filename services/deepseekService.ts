@@ -22,14 +22,25 @@ export interface BaziImageInput {
 
 const extractJson = (content: string): any => {
   let jsonContent = content.trim();
+  console.log('extractJson 输入长度:', content.length, '前80:', content.substring(0, 80));
   const jsonMatch = jsonContent.match(/```(?:json)?\s*([\s\S]*?)```/);
   if (jsonMatch) {
+    console.log('extractJson 匹配到 markdown 代码块');
     jsonContent = jsonMatch[1].trim();
   } else {
-    const jsonStartIndex = jsonContent.indexOf("{");
-    const jsonEndIndex = jsonContent.lastIndexOf("}");
-    if (jsonStartIndex !== -1 && jsonEndIndex !== -1) {
-      jsonContent = jsonContent.substring(jsonStartIndex, jsonEndIndex + 1);
+    // 推理模型可能在 JSON 前输出思考文字，尝试从最后一个换行后的 { 开始
+    const newlineBrace = [...jsonContent.matchAll(/\n\{/g)];
+    if (newlineBrace.length > 0) {
+      const lastIdx = newlineBrace[newlineBrace.length - 1].index! + 1;
+      const candidate = jsonContent.substring(lastIdx);
+      console.log('extractJson 尝试从最后一个 \\n{ 截取, 位置:', lastIdx);
+      jsonContent = candidate;
+    } else {
+      const jsonStartIndex = jsonContent.indexOf("{");
+      const jsonEndIndex = jsonContent.lastIndexOf("}");
+      if (jsonStartIndex !== -1 && jsonEndIndex !== -1) {
+        jsonContent = jsonContent.substring(jsonStartIndex, jsonEndIndex + 1);
+      }
     }
   }
 
@@ -77,7 +88,12 @@ const ensureArray = (v: unknown): string[] => {
   return [];
 };
 
-const normalizeAnalysis = (data: any): LifeDestinyResult["analysis"] => ({
+const normalizeAnalysis = (data: any): LifeDestinyResult["analysis"] => {
+  if (!data || typeof data !== 'object') {
+    console.warn('normalizeAnalysis 收到无效 data:', data);
+    data = {};
+  }
+  return {
   bazi: ensureArray(data.bazi),
   summary: typeof data.summary === 'string' ? data.summary : "无摘要",
   summaryScore: typeof data.summaryScore === 'number' ? data.summaryScore : 5,
@@ -101,7 +117,8 @@ const normalizeAnalysis = (data: any): LifeDestinyResult["analysis"] => ({
   cryptoStyle: typeof data.cryptoStyle === 'string' ? data.cryptoStyle : "指数基金定投",
   daYunReasons: typeof data.daYunReasons === 'object' && data.daYunReasons !== null ? data.daYunReasons : {},
   baziSections: typeof data.baziSections === 'object' && data.baziSections !== null ? data.baziSections : {},
-});
+  };
+};
 
 
 
@@ -211,14 +228,17 @@ const callDeepSeekAPI = async (
   signal: AbortSignal,
   options?: { model?: string; maxTokens?: number; temperature?: number },
 ): Promise<LifeDestinyResult> => {
+  console.log('callDeepSeekAPI 开始, model:', options?.model || DEFAULT_MODEL, 'maxTokens:', options?.maxTokens);
   const content = await fetchDeepSeekContentWithRetry({
     model: options?.model || DEFAULT_MODEL,
     temperature: options?.temperature ?? 0.5,
     max_tokens: options?.maxTokens || MAX_TOKENS,
     messages,
   }, signal);
+  console.log('callDeepSeekAPI content 长度:', content?.length, '前100字:', content?.substring(0, 100));
   if (!content) throw new Error("模型未返回有效内容");
   const data = extractJson(content);
+  console.log('callDeepSeekAPI extractJson 返回:', typeof data, data === null ? 'null' : Array.isArray(data) ? 'array[' + data.length + ']' : 'keys=' + Object.keys(data || {}).slice(0, 8));
   return {
     chartData: data.chartPoints || [],
     analysis: normalizeAnalysis(data),
@@ -227,9 +247,9 @@ const callDeepSeekAPI = async (
 
 const getBaiduOcrConfig = (): BaiduOcrConfig => {
   return {
-    apiKey: (import.meta.env.VITE_BAIDU_OCR_API_KEY || "").trim(),
-    secretKey: (import.meta.env.VITE_BAIDU_OCR_SECRET_KEY || "").trim(),
-    // Always use proxy to avoid CORS issues (both dev and prod)
+    apiKey: "",
+    secretKey: "",
+    // 始终通过代理转发，API Key 由服务端注入，不暴露到前端
     proxyUrl: "/api/baidu-ocr",
   };
 };
@@ -669,6 +689,7 @@ export const generateKlineOverviewFromOcr = async (
 
     result.imageBase64 = ctx.imageBase64;
     result.analysis.baziSections = ctx.baziSections || result.analysis.baziSections;
+    if (!Array.isArray(result.chartData)) result.chartData = [];
     onProgress?.(100);
     return result;
   } catch (e: any) {

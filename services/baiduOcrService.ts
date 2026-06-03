@@ -35,7 +35,7 @@ export const extractBaziFromImageBaidu = async (
   const useProxy = !!config.proxyUrl;
 
   if (!useProxy && (!config.apiKey || !config.secretKey)) {
-    throw new Error("请配置 VITE_BAIDU_OCR_API_KEY 和 VITE_BAIDU_OCR_SECRET_KEY");
+    throw new Error("请配置 BAIDU_OCR_API_KEY 和 BAIDU_OCR_SECRET_KEY");
   }
 
   if (useProxy) {
