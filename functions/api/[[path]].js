@@ -41,12 +41,7 @@ export async function onRequest(context) {
   const targetUrl = `${baseUrl}/${endpoint}${url.search}`;
 
   const envKeyName = service === 'deepseek' ? 'DEEPSEEK_API_KEY' : 'VISION_API_KEY';
-  let apiKey = env[envKeyName] || '';
-
-  if (!apiKey) {
-    const authHeader = request.headers.get('Authorization') || request.headers.get('authorization') || '';
-    apiKey = authHeader.replace(/^Bearer\s+/i, '').trim();
-  }
+  const apiKey = env[envKeyName] || '';
 
   if (!apiKey) {
     return new Response(

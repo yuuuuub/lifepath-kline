@@ -1,5 +1,5 @@
 import React, { useState } from "react";
-import { DirectionType, DirectionResult, OcrContext, LifeDestinyResult } from "../types";
+import { DirectionType, DirectionResult, OcrContext, LifeDestinyResult, AnalysisData } from "../types";
 import { generateDirectionAnalysis, generateKlineFromOcr, generateKlineOverviewFromOcr, getDirectionLabel } from "../services/deepseekService";
 import LifeKLineChart, { groupByDaYun } from "./LifeKLineChart";
 import AnalysisResult from "./AnalysisResult";
@@ -117,6 +117,7 @@ const AnalysisHub: React.FC<AnalysisHubProps> = ({ ocrContext, onReset }) => {
   const [chartProgress, setChartProgress] = useState(0);
   const [error, setError] = useState<string | null>(null);
   const [sectionsExpanded, setSectionsExpanded] = useState(false);
+  const [klineAnalysis, setKlineAnalysis] = useState<AnalysisData | null>(null);
 
   const handleDirectionSelect = async (direction: DirectionType) => {
     console.log('handleDirectionSelect called:', direction);
@@ -140,6 +141,8 @@ const AnalysisHub: React.FC<AnalysisHubProps> = ({ ocrContext, onReset }) => {
         setLoading(false);
         console.log('setLoading(false) after overview');
 
+        if (overview?.analysis) setKlineAnalysis(overview.analysis);
+
         if ((overview as LifeDestinyResult).chartData?.length > 0) return;
 
         setChartLoading(true);
@@ -148,6 +151,7 @@ const AnalysisHub: React.FC<AnalysisHubProps> = ({ ocrContext, onReset }) => {
           .then((fullResult) => {
             console.log('generateKlineFromOcr 完成, chartData:', fullResult?.chartData?.length);
             setDirectionResult(fullResult);
+            if (fullResult?.analysis) setKlineAnalysis(fullResult.analysis);
           })
           .catch((e) => {
             console.error('generateKlineFromOcr 失败:', e);
@@ -166,7 +170,7 @@ const AnalysisHub: React.FC<AnalysisHubProps> = ({ ocrContext, onReset }) => {
     }
 
     try {
-      const result = await generateDirectionAnalysis(ctx, direction, (pct) => setProgress(pct));
+      const result = await generateDirectionAnalysis(ctx, direction, (pct) => setProgress(pct), klineAnalysis || undefined);
       setDirectionResult(result);
     } catch (e) {
       console.error('direction分析异常:', direction, e);

@@ -1,4 +1,4 @@
-import { LifeDestinyResult, DirectionResult, DirectionType, OcrContext, ParsedBaziOcr, BaziPillars } from "../types";
+import { LifeDestinyResult, DirectionResult, DirectionType, OcrContext, ParsedBaziOcr, BaziPillars, AnalysisData } from "../types";
 import { extractBaziFromImageBaidu, BaiduOcrConfig } from "./baiduOcrService";
 import { getFromCache, saveToCache, getDirectionCache, saveDirectionCache } from "./cacheService";
 
@@ -861,9 +861,42 @@ const DIRECTION_CONFIG: Record<DirectionType, { label: string; icon: string }> =
   family: { label: "六亲人际", icon: "👨‍👩‍👧‍👦" },
 };
 
+const KLINE_FIELD_MAP: Record<DirectionType, keyof AnalysisData> = {
+  kline: 'summary',
+  wealth: 'wealth',
+  marriage: 'marriage',
+  career: 'industry',
+  health: 'health',
+  family: 'family',
+};
+
+const KLINE_SCORE_MAP: Record<DirectionType, keyof AnalysisData> = {
+  kline: 'summaryScore',
+  wealth: 'wealthScore',
+  marriage: 'marriageScore',
+  career: 'industryScore',
+  health: 'healthScore',
+  family: 'familyScore',
+};
+
+const buildConsistencyConstraint = (direction: DirectionType, kline: AnalysisData): string => {
+  const content = kline[KLINE_FIELD_MAP[direction]];
+  const score = kline[KLINE_SCORE_MAP[direction]];
+  if (!content || typeof content !== 'string' || !content.trim()) return '';
+  const scoreStr = typeof score === 'number' ? score : '';
+  let extra = '';
+  if (direction === 'wealth' && kline.crypto) extra = `\n- 投资建议：${kline.cryptoStyle || ''}，最佳年份：${kline.cryptoYear || ''}`;
+  return `
+
+【一致性约束 - 重要】以下信息来自命理总评的已有结论，你必须在此基础上展开细化，不得推翻或严重偏离：
+- 总评结论：${content}${extra}
+${scoreStr ? `- 总评评分：${scoreStr}/10（你的评分需在±1范围内）` : ''}
+请确保核心定性判断与总评一致，highlights 和 timeline 从总评结论中自然延伸。`;
+};
+
 export const getDirectionLabel = (d: DirectionType) => DIRECTION_CONFIG[d].label;
 
-const buildDirectionPrompt = (ctx: OcrContext, direction: DirectionType): string => {
+const buildDirectionPrompt = (ctx: OcrContext, direction: DirectionType, klineAnalysis?: AnalysisData): string => {
   const orientationNote = direction === "marriage" && ctx.orientation === "同性恋"
     ? "由于用户为同性恋取向，请完全按同性视角解读情感关系。正官/七杀对应同性伴侣，正财/偏财调整为同性缘分的辅助参考。preference 字段明确写出用户喜欢同性（男生喜欢男生/女生喜欢女生）。"
     : direction === "marriage" && ctx.orientation === "双性恋"
@@ -871,6 +904,10 @@ const buildDirectionPrompt = (ctx: OcrContext, direction: DirectionType): string
     : direction === "marriage"
     ? "由于用户为异性恋取向，请按传统异性视角解读情感关系。preference 字段明确写出用户喜欢异性（乾造喜欢女生/坤造喜欢男生）。"
     : "";
+
+  const consistencyConstraint = klineAnalysis && direction !== 'kline'
+    ? buildConsistencyConstraint(direction, klineAnalysis)
+    : '';
 
   const prompts: Record<DirectionType, string> = {
     kline: `请为用户生成完整的命理分析报告和命运K线数据。
@@ -996,13 +1033,14 @@ timeline 按少年、青年、中年、老年四个阶段划分，共4条，desc
 分析要点：家庭关系、父母运势、子女缘分、社交圈特征、贵人/小人年份、人际关系高峰低谷期。`,
   };
 
-  return prompts[direction];
+  return (prompts[direction] || '') + consistencyConstraint;
 };
 
 export const generateDirectionAnalysis = async (
   ctx: OcrContext,
   direction: DirectionType,
   onProgress?: (pct: number) => void,
+  klineAnalysis?: AnalysisData,
 ): Promise<DirectionResult | LifeDestinyResult> => {
   if (direction === "kline") {
     return generateKlineFromOcr(ctx, onProgress);
@@ -1020,7 +1058,7 @@ export const generateDirectionAnalysis = async (
   let timer: ReturnType<typeof setInterval> | null = null;
 
   try {
-    const prompt = buildDirectionPrompt(ctx, direction);
+    const prompt = buildDirectionPrompt(ctx, direction, klineAnalysis);
     const baziContext = buildStructuredBaziContext(ctx);
 
     onProgress?.(30);
@@ -1031,7 +1069,7 @@ export const generateDirectionAnalysis = async (
 
     const content = await fetchDeepSeekContentWithRetry({
       model: DEFAULT_MODEL,
-      temperature: 0.5,
+      temperature: 0.2,
       max_tokens: 8192,
       messages: [
         { role: "system", content: "你是专业命理分析大师。基于结构化排盘 JSON 分析，输出纯 JSON，禁止 markdown。" },
